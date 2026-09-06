@@ -1,0 +1,202 @@
+/* ============================================================
+   SOPORTE MOVISTAR — RESPONSIVE CSS
+   Tablets y dispositivos móviles
+   ============================================================ */
+
+/* ---------- Tablets (menos de 992px) ---------- */
+@media (max-width: 991px) {
+  .nav-links a {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+  }
+
+  .nav-logo .logo-texto {
+    display: none;
+  }
+
+  .destacado.grid-destacado {
+    grid-template-columns: 1fr;
+  }
+
+  .destacado .destacado-imagen {
+    min-height: 200px;
+  }
+
+  .grid-galeria {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+/* ---------- Móviles (menos de 768px) ---------- */
+@media (max-width: 767px) {
+  /* Menú hamburguesa */
+  .btn-menu {
+    display: flex;
+  }
+
+  .usuario-chip {
+    max-width: 150px;
+  }
+
+  .campos-dos {
+    grid-template-columns: 1fr;
+  }
+
+  .login-caja {
+    padding: 1.8rem 1.4rem 1.5rem;
+  }
+
+  .nav-links {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--header-fondo);
+    border-bottom: 3px solid var(--amarillo);
+    box-shadow: 0 10px 25px var(--sombra-fuerte);
+    padding: 0.75rem 1.25rem 1rem;
+    transform: translateY(-140%);
+    opacity: 0;
+    transition: transform var(--transicion), opacity var(--transicion);
+    z-index: 90;
+  }
+
+  .nav-links.abierto {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  .nav-links a {
+    padding: 0.85rem 1rem;
+    border-radius: var(--radio-s);
+  }
+
+  /* Hero más compacto */
+  .hero {
+    padding: 4rem 1rem 3.5rem;
+  }
+
+  .hero-logo {
+    width: 78px;
+    height: 78px;
+    font-size: 1.8rem;
+  }
+
+  /* Secciones con menos espacio */
+  .seccion {
+    padding: 2.5rem 0;
+  }
+
+  /* Tabla ranking → tarjetas */
+  .tabla-ranking-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Barra de herramientas apilada */
+  .barra-herramientas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buscador {
+    min-width: 100%;
+  }
+
+  .chips-filtros {
+    justify-content: center;
+  }
+
+  /* Footer */
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+/* ---------- Móviles pequeños (menos de 480px) ---------- */
+@media (max-width: 479px) {
+  .contenedor {
+    padding: 0 0.9rem;
+  }
+
+  .nav-logo .logo-texto {
+    display: none;
+  }
+
+  .usuario-chip-texto {
+    display: none;
+  }
+
+  .usuario-chip {
+    max-width: 44px;
+    padding: 0.25rem;
+    justify-content: center;
+  }
+
+  .hero {
+    padding: 3rem 0.9rem 2.75rem;
+  }
+
+  .hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .grid-eventos,
+  .grid-miembros {
+    grid-template-columns: 1fr;
+  }
+
+  .cuenta-regresiva .cd-unidad {
+    min-width: 72px;
+    padding: 0.7rem 0.45rem;
+  }
+
+  .cuenta-regresiva .cd-unidad .cd-numero {
+    font-size: 1.4rem;
+  }
+
+  .destacado {
+    padding: 1.25rem;
+  }
+
+  .tarjeta-evento .tarjeta-imagen {
+    height: 150px;
+  }
+
+  .btn {
+    padding: 0.65rem 1.1rem;
+    font-size: 0.88rem;
+  }
+
+  .modal-contenido {
+    max-height: 92vh;
+  }
+
+  .modal-cabecera,
+  .modal-cuerpo {
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+
+  .tarjeta-evento .tarjeta-pie {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tarjeta-evento .tarjeta-pie .btn {
+    width: 100%;
+  }
+}
+
+/* ---------- Reducción de movimiento ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

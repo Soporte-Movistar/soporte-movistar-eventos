@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soporte Movistar | Historial</title>
+  <meta name="description" content="Historial de eventos finalizados del clan Soporte Movistar de PokeMMO. Resultados, ganadores y premios de ediciones anteriores.">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="icon" href="./assets/logo/logo.png" type="image/png">
+  <script>
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('sm-tema') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</head>
+<body data-pagina="historial">
+
+  <main>
+    <section class="pagina-cabecera">
+      <span class="pagina-ico" aria-hidden="true">📜</span>
+      <h1>HISTORIAL DE EVENTOS</h1>
+      <p>Todos los eventos finalizados del clan, con sus ganadores y resultados. La historia de Soporte Movistar.</p>
+    </section>
+
+    <section class="seccion" aria-label="Historial de eventos">
+      <div class="contenedor">
+        <div class="barra-herramientas" role="toolbar" aria-label="Filtros del historial">
+          <div class="chips-filtros" id="filtros-historial"></div>
+          <div class="buscador">
+            <span class="buscador-ico" aria-hidden="true">🔍</span>
+            <input type="search" id="buscador-historial" placeholder="Buscar en el historial..." autocomplete="off"
+              aria-label="Buscar en el historial">
+          </div>
+        </div>
+
+        <div id="historial-grid" class="grid-eventos"></div>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <div style="padding: 1rem; text-align: center; background: #FBE6E6; color: #D64545; border-radius: 8px; margin: 1rem;">
+      Esta página necesita JavaScript para cargar los datos. Activalo para ver los contenidos.
+    </div>
+  </noscript>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/main.js"></script>
+  <script src="./js/historial.js"></script>
+</body>
+</html>

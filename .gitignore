@@ -1,0 +1,15 @@
+# Base de datos local de la API (no se sube a Git)
+api/data/*.db
+api/data/*.db-wal
+api/data/*.db-shm
+
+# Nodos y dependencias
+node_modules/
+
+# Archivos temporales del sistema
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log

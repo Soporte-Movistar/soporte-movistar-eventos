@@ -1,0 +1,23 @@
+# ============================================================
+#   SOPORTE MOVISTAR — Render Blueprint (api/)
+#   Despliega la API centralizada del clan en Render.com
+#   Uso: conectar el repo en Render → "Blueprint" (render.yaml)
+#   o crear Web Service manualmente con estos mismos valores.
+# ============================================================
+
+services:
+  # API con base de datos centralizada (inscripciones, eventos, fotos)
+  - type: web
+    name: soporte-movistar-api
+    runtime: node
+    rootDir: api
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      # Permitir llamadas desde el sitio (GitHub Pages). Puedes
+      # restringirlo a tu dominio si quieres más seguridad, ej:
+      #   CORS_ORIGIN: https://tu-usuario.github.io
+      - key: CORS_ORIGIN
+        value: "*"

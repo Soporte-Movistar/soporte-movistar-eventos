@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soporte Movistar | Miembros</title>
+  <meta name="description" content="Conocé a los miembros del clan Soporte Movistar de PokeMMO: rangos, puntos, especialidades y su actividad en los eventos.">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="icon" href="./assets/logo/logo.png" type="image/png">
+  <script>
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('sm-tema') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</head>
+<body data-pagina="miembros">
+
+  <main>
+    <section class="pagina-cabecera">
+      <span class="pagina-ico" aria-hidden="true">👥</span>
+      <h1>MIEMBROS DEL CLAN</h1>
+      <p>La comunidad que hace posible la sala de eventos. Estos son datos de ejemplo que pueden reemplazarse fácilmente.</p>
+    </section>
+
+    <section class="seccion" aria-label="Miembros del clan">
+      <div class="contenedor">
+        <div id="resumen-clan" class="mapa-estados"></div>
+        <div id="miembros-grid" class="grid-miembros"></div>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <div style="padding: 1rem; text-align: center; background: #FBE6E6; color: #D64545; border-radius: 8px; margin: 1rem;">
+      Esta página necesita JavaScript para cargar los datos. Activalo para ver los contenidos.
+    </div>
+  </noscript>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/main.js"></script>
+  <script src="./js/miembros.js"></script>
+</body>
+</html>

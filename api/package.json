@@ -1,0 +1,15 @@
+{
+  "name": "soporte-movistar-api",
+  "version": "1.0.0",
+  "description": "API con base de datos centralizada para el sitio del clan Soporte Movistar (inscripciones, eventos y galería).",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

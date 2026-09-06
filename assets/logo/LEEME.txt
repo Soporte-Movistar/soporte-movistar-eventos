@@ -1,0 +1,1 @@
+﻿Coloca aquí el logo del clan (logo.png). Mientras no exista, se muestra un placeholder visual.

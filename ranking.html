@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soporte Movistar | Ranking</title>
+  <meta name="description" content="Ranking del clan Soporte Movistar de PokeMMO. Posiciones, puntos, eventos ganados y participaciones de los mejores jugadores.">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="icon" href="./assets/logo/logo.png" type="image/png">
+  <script>
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('sm-tema') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</head>
+<body data-pagina="ranking">
+
+  <main>
+    <section class="pagina-cabecera">
+      <span class="pagina-ico" aria-hidden="true">🏆</span>
+      <h1>RANKING DEL CLAN</h1>
+      <p>Posiciones actualizadas con los puntos de cada jugador. Los tres primeros puestos son los campeones de la temporada.</p>
+    </section>
+
+    <section class="seccion" aria-label="Tabla de ranking">
+      <div class="contenedor">
+        <div id="ranking-contenido"></div>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <div style="padding: 1rem; text-align: center; background: #FBE6E6; color: #D64545; border-radius: 8px; margin: 1rem;">
+      Esta página necesita JavaScript para cargar los datos. Activalo para ver los contenidos.
+    </div>
+  </noscript>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/main.js"></script>
+  <script src="./js/ranking.js"></script>
+</body>
+</html>

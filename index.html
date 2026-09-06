@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soporte Movistar | Sala de Eventos</title>
+  <meta name="description" content="Sala de Eventos del clan Soporte Movistar de PokeMMO. Próximos eventos, torneos, ranking, miembros e historial de la comunidad.">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="icon" href="./assets/logo/logo.png" type="image/png">
+  <script>
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('sm-tema') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</head>
+<body data-pagina="inicio">
+
+  <main>
+    <!-- HERO -->
+    <section class="hero" aria-label="Soporte Movistar, sala de eventos">
+      <div class="hero-logo" aria-hidden="true">⚡</div>
+      <h1>SOPORTE MOVISTAR</h1>
+      <span class="hero-sub">Sala de Eventos</span>
+      <p class="hero-desc">El punto de encuentro para los eventos, torneos y actividades de nuestra comunidad en PokeMMO.</p>
+      <a href="./eventos.html" class="btn btn-amarillo">VER EVENTOS</a>
+    </section>
+
+    <!-- PRÓXIMO EVENTO -->
+    <section class="seccion" aria-label="Próximo evento">
+      <div class="contenedor">
+        <div id="destacado-espacio"></div>
+        <div id="cuenta-regresiva"></div>
+      </div>
+    </section>
+
+    <!-- ANUNCIOS -->
+    <section class="seccion" aria-label="Anuncios">
+      <div class="contenedor">
+        <h2 class="seccion-titulo"><span class="icono" aria-hidden="true">📢</span> ANUNCIOS</h2>
+        <p class="seccion-sub">Últimas novedades del clan.</p>
+        <div id="anuncios-lista" class="lista-anuncios"></div>
+      </div>
+    </section>
+
+    <!-- GALERÍA -->
+    <section class="seccion" aria-label="Galería de eventos">
+      <div class="contenedor">
+        <h2 class="seccion-titulo"><span class="icono" aria-hidden="true">📸</span> GALERÍA</h2>
+        <p class="seccion-sub">Capturas de nuestros eventos anteriores.</p>
+        <div id="galeria-lista" class="grid-galeria"></div>
+      </div>
+    </section>
+  </main>
+
+  <noscript>
+    <div style="padding: 1rem; text-align: center; background: #FBE6E6; color: #D64545; border-radius: 8px; margin: 1rem;">
+      Esta página necesita JavaScript para cargar los datos. Activalo para ver los contenidos.
+    </div>
+  </noscript>
+
+  <script src="./js/config.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/main.js"></script>
+</body>
+</html>
