@@ -12,7 +12,7 @@ services:
     runtime: node
     rootDir: api
     plan: free
-    buildCommand: ""
+    buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /api/health
     envVars:
@@ -21,3 +21,9 @@ services:
       #   CORS_ORIGIN: https://tu-usuario.github.io
       - key: CORS_ORIGIN
         value: "*"
+      # ⚠️ OBLIGATORIO: la connection string de tu base PostgreSQL
+      # (Supabase). Pégala aquí o como variable de entorno del servicio
+      # en el panel de Render. Ej:
+      #   postgresql://postgres.xxxx:TU-PASSWORD@aws-0-xxxx.pooler.supabase.com:6543/postgres
+      - key: DATABASE_URL
+        value: ""

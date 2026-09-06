@@ -1,8 +1,9 @@
 /* ============================================================
    SOPORTE MOVISTAR — API — server.js
-   Backend con base de datos centralizada (Node puro + node:sqlite).
-   Cero dependencias externas: solo Node.js (v22+) necesario.
+   Backend con base de datos centralizada (Node + PostgreSQL).
+   Dependencia: pg (instalada con npm install).
 
+   Requisito: variable DATABASE_URL (Supabase).
    Ejecutar:  node server.js
    Defecto:   escucha en el puerto de la variable PORT o 3000.
    ============================================================ */
@@ -54,14 +55,18 @@ function leerCuerpo(req) {
 
 /* ---------- AUTH ---------- */
 
-function autenticar(req) {
+async function autenticar(req) {
   const nombre = (req.headers['x-usuario'] || '').toString().trim();
   if (!nombre) return null;
-  return DB.prepare('SELECT nombre, rango, esStaff FROM usuarios WHERE nombre = ?').get(nombre) || null;
+  // Postgres guarda los nombres de columna en minúsculas (esstaff)
+  const fila = await DB.consulta('SELECT nombre, rango, esstaff FROM usuarios WHERE nombre = $1', [nombre]);
+  const u = fila.rows[0] || null;
+  if (u) u.esStaff = !!u.esstaff;
+  return u;
 }
 
-function exigirStaff(req, res) {
-  const usuario = autenticar(req);
+async function exigirStaff(req, res) {
+  const usuario = await autenticar(req);
   if (!usuario) {
     json(res, 401, { error: 'No autenticado: falta X-Usuario' });
     return null;
@@ -84,11 +89,11 @@ function leerEvento(row) {
     id: row.id,
     nombre: row.nombre,
     tipo: row.tipo,
-    tipoIcono: row.tipoIcono,
+    tipoIcono: row.tipoicono || row.tipoIcono || '🎉',
     fecha: row.fecha,
     hora: row.hora,
-    fechaFin: row.fechaFin || '',
-    horaFin: row.horaFin || '',
+    fechaFin: row.fechafin || row.fechaFin || '',
+    horaFin: row.horafin || row.horaFin || '',
     inscripcion: row.inscripcion || 'cerrada',
     estado: row.estado,
     descripcion: row.descripcion,
@@ -133,7 +138,7 @@ function crearEventoDesdeCuerpo(cuerpo, usuario) {
 
 /* ---------- RUTAS ---------- */
 
-function manejar(req, res) {
+async function manejar(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const ruta = url.pathname;
 
@@ -145,88 +150,88 @@ function manejar(req, res) {
 
   // ---- Auth / validar usuario ----
   if (ruta === '/api/auth' && req.method === 'POST') {
-    return leerCuerpo(req).then((cuerpo) => {
-      const usuario = DB.prepare('SELECT nombre, rango, esStaff FROM usuarios WHERE nombre = ?')
-        .get(String(cuerpo.nombre || '').trim());
-      if (!usuario) return json(res, 404, { error: 'Usuario no encontrado' });
-      return json(res, 200, { nombre: usuario.nombre, rango: usuario.rango, esStaff: !!usuario.esStaff });
-    }).catch((err) => json(res, 400, { error: err.message }));
+    const cuerpo = await leerCuerpo(req);
+    const fila = await DB.consulta('SELECT nombre, rango, esstaff FROM usuarios WHERE nombre = $1', [String(cuerpo.nombre || '').trim()]);
+    const usuario = fila.rows[0];
+    if (!usuario) return json(res, 404, { error: 'Usuario no encontrado' });
+    return json(res, 200, { nombre: usuario.nombre, rango: usuario.rango, esStaff: !!usuario.esstaff });
   }
 
   // ---- Eventos de staff ----
   if (ruta === '/api/eventos-staff' && req.method === 'GET') {
-    const rows = DB.prepare('SELECT * FROM eventos ORDER BY fecha ASC, id DESC').all();
-    return json(res, 200, rows.map(leerEvento));
+    const fila = await DB.consulta('SELECT * FROM eventos ORDER BY fecha ASC, id DESC');
+    return json(res, 200, fila.rows.map(leerEvento));
   }
 
   if (ruta === '/api/eventos-staff' && req.method === 'POST') {
-    const staff = exigirStaff(req, res);
+    const staff = await exigirStaff(req, res);
     if (!staff) return;
-    return leerCuerpo(req).then((cuerpo) => {
-      const ev = crearEventoDesdeCuerpo(cuerpo, staff);
-      if (!ev.nombre) return json(res, 400, { error: 'El nombre es obligatorio' });
-      const insert = DB.prepare(`
-        INSERT INTO eventos (nombre, tipo, tipoIcono, fecha, hora, fechaFin, horaFin, inscripcion,
-          estado, descripcion, ubicacion, organizador, premio, reglas, participantes, ganador,
-          resultados, observaciones, creado_por, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-      `);
-      const info = insert.run(
-        ev.nombre, ev.tipo, ev.tipoIcono, ev.fecha, ev.hora, ev.fechaFin, ev.horaFin, ev.inscripcion,
-        ev.estado, ev.descripcion, ev.ubicacion, ev.organizador, ev.premio, ev.reglas, ev.participantes,
-        ev.ganador, ev.resultados, ev.observaciones, ev.creado_por, new Date().toISOString()
-      );
-      const nuevo = DB.prepare('SELECT * FROM eventos WHERE id = ?').get(info.lastInsertRowid);
-      return json(res, 201, leerEvento(nuevo));
-    }).catch((err) => json(res, 400, { error: err.message }));
+    const cuerpo = await leerCuerpo(req);
+    const ev = crearEventoDesdeCuerpo(cuerpo, staff);
+    if (!ev.nombre) return json(res, 400, { error: 'El nombre es obligatorio' });
+    const insert = await DB.consulta(`
+      INSERT INTO eventos (nombre, tipo, tipoIcono, fecha, hora, fechaFin, horaFin, inscripcion,
+        estado, descripcion, ubicacion, organizador, premio, reglas, participantes, ganador,
+        resultados, observaciones, creado_por, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      RETURNING id
+    `, [
+      ev.nombre, ev.tipo, ev.tipoIcono, ev.fecha, ev.hora, ev.fechaFin, ev.horaFin, ev.inscripcion,
+      ev.estado, ev.descripcion, ev.ubicacion, ev.organizador, ev.premio, ev.reglas, ev.participantes,
+      ev.ganador, ev.resultados, ev.observaciones, ev.creado_por, new Date().toISOString()
+    ]);
+    const id = insert.rows[0].id;
+    const nuevo = await DB.consulta('SELECT * FROM eventos WHERE id = $1', [id]);
+    return json(res, 201, leerEvento(nuevo.rows[0]));
   }
 
   // Eliminar un evento publicado (solo staff). Borra en cascada sus
   // inscripciones y fotos (claves foráneas con ON DELETE CASCADE).
   const mEventoDel = ruta.match(/^\/api\/eventos-staff\/(\d+)$/);
   if (mEventoDel && req.method === 'DELETE') {
-    const staff = exigirStaff(req, res);
+    const staff = await exigirStaff(req, res);
     if (!staff) return;
     const eventoId = Number(mEventoDel[1]);
-    const existe = DB.prepare('SELECT id, nombre FROM eventos WHERE id = ?').get(eventoId);
-    if (!existe) return json(res, 404, { error: 'Evento no encontrado' });
-    DB.prepare('DELETE FROM eventos WHERE id = ?').run(eventoId);
-    return json(res, 200, { eliminado: true, id: eventoId, nombre: existe.nombre });
+    const existe = await DB.consulta('SELECT id, nombre FROM eventos WHERE id = $1', [eventoId]);
+    if (!existe.rows[0]) return json(res, 404, { error: 'Evento no encontrado' });
+    await DB.consulta('DELETE FROM eventos WHERE id = $1', [eventoId]);
+    return json(res, 200, { eliminado: true, id: eventoId, nombre: existe.rows[0].nombre });
   }
 
   // ---- Inscripciones ----
   const mInsc = ruta.match(/^\/api\/eventos\/(\d+)\/inscripciones(?:\/([^/]+))?$/);
   if (mInsc) {
     const eventoId = Number(mInsc[1]);
-    const eventoExiste = DB.prepare('SELECT id FROM eventos WHERE id = ?').get(eventoId);
-    if (!eventoExiste) return json(res, 404, { error: 'Evento no encontrado' });
+    const eventoExiste = await DB.consulta('SELECT id FROM eventos WHERE id = $1', [eventoId]);
+    if (!eventoExiste.rows[0]) return json(res, 404, { error: 'Evento no encontrado' });
 
     // LISTAR inscripciones de un evento
     if (req.method === 'GET') {
-      const filas = DB.prepare('SELECT usuario, fecha FROM inscripciones WHERE evento_id = ? ORDER BY fecha ASC').all(eventoId);
-      const participantes = DB.prepare('SELECT participantes FROM eventos WHERE id = ?').get(eventoId);
+      const filas = await DB.consulta('SELECT usuario, fecha FROM inscripciones WHERE evento_id = $1 ORDER BY fecha ASC', [eventoId]);
+      const participantes = await DB.consulta('SELECT participantes FROM eventos WHERE id = $1', [eventoId]);
       let base = [];
-      try { base = JSON.parse(participantes.participantes || '[]'); } catch (e) {}
+      try { base = JSON.parse(participantes.rows[0].participantes || '[]'); } catch (e) {}
       const unidos = new Set(base);
-      filas.forEach(f => unidos.add(f.usuario));
+      filas.rows.forEach(f => unidos.add(f.usuario));
       return json(res, 200, {
-        inscripciones: filas.map(f => ({ usuario: f.usuario, fecha: f.fecha })),
+        inscripciones: filas.rows.map(f => ({ usuario: f.usuario, fecha: f.fecha })),
         participantes: [...unidos]
       });
     }
 
-    // INSCRIBIRSE (m_insc[2] es no definido en POST, usamos el cuerpo)
+    // INSCRIBIRSE
     if (req.method === 'POST' && !mInsc[2]) {
-      const usuario = autenticar(req);
+      const usuario = await autenticar(req);
       if (!usuario) return json(res, 401, { error: 'No autenticado' });
-      const ev = DB.prepare('SELECT * FROM eventos WHERE id = ?').get(eventoId);
-      const evObj = leerEvento(ev);
+      const ev = await DB.consulta('SELECT * FROM eventos WHERE id = $1', [eventoId]);
+      const evObj = leerEvento(ev.rows[0]);
+
       // Reutilizar la misma lógica del frontend para saber si aún se puede
       const ahora = Date.now();
       const instante = (fecha, hora) => {
         if (!fecha) return null;
         const f = new Date(fecha.replace(/-/g, '/'));
-        if (hora) { const [hh, mm] = hora.split(':'); f.setHours(Number(hh)||0, Number(mm)||0, 0, 0); }
+        if (hora) { const [hh, mm] = hora.split(':'); f.setHours(Number(hh) || 0, Number(mm) || 0, 0, 0); }
         return f.getTime();
       };
       let abiertas = true;
@@ -242,47 +247,42 @@ function manejar(req, res) {
       }
       if (!abiertas) return json(res, 400, { error: 'Inscripciones cerradas' });
 
+      const cuerpo = await leerCuerpo(req);
+      const insUsuario = String(cuerpo.usuario || usuario.nombre).trim();
+      const fechaIns = String(cuerpo.fecha || new Date().toISOString());
+
       if (evObj.inscripcion === 'abierta') {
-        return leerCuerpo(req).then((cuerpo) => {
-          const insUsuario = String(cuerpo.usuario || usuario.nombre).trim();
-          const fechaIns = String(cuerpo.fecha || new Date().toISOString());
-          try {
-            DB.prepare('INSERT OR IGNORE INTO inscripciones (evento_id, usuario, fecha) VALUES (?,?,?)')
-              .run(eventoId, insUsuario, fechaIns);
-          } catch (err) {
-            return json(res, 400, { error: err.message });
-          }
-          const filas = DB.prepare('SELECT usuario, fecha FROM inscripciones WHERE evento_id = ? ORDER BY fecha ASC').all(eventoId);
-          return json(res, 201, { inscritos: filas, usuario: insUsuario });
-        }).catch((err) => json(res, 400, { error: err.message }));
+        await DB.consulta(`
+          INSERT INTO inscripciones (evento_id, usuario, fecha)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (evento_id, usuario) DO NOTHING
+        `, [eventoId, insUsuario, fechaIns]);
+        const filas = await DB.consulta('SELECT usuario, fecha FROM inscripciones WHERE evento_id = $1 ORDER BY fecha ASC', [eventoId]);
+        return json(res, 201, { inscritos: filas.rows, usuario: insUsuario });
       }
 
       // inscripcion cerrada: el usuario que SE INSCRIBIÓ se agrega como participante
-      return leerCuerpo(req).then((cuerpo) => {
-        const insUsuario = String(cuerpo.usuario || usuario.nombre).trim();
-        let base = [];
-        try { base = JSON.parse(evObj.participantes ? JSON.stringify(evObj.participantes) : '[]'); } catch (e) {}
-        const set = new Set(Array.isArray(base) ? base : []);
-        set.add(insUsuario);
-        DB.prepare('UPDATE eventos SET participantes = ? WHERE id = ?').run(JSON.stringify([...set]), eventoId);
-        return json(res, 200, { participantes: [...set], usuario: insUsuario });
-      }).catch((err) => json(res, 400, { error: err.message }));
+      let base = [];
+      try { base = Array.isArray(evObj.participantes) ? evObj.participantes : []; } catch (e) {}
+      const set = new Set(base);
+      set.add(insUsuario);
+      await DB.consulta('UPDATE eventos SET participantes = $1 WHERE id = $2', [JSON.stringify([...set]), eventoId]);
+      return json(res, 200, { participantes: [...set], usuario: insUsuario });
     }
 
     // CANCELAR inscripción
     if (req.method === 'DELETE' && mInsc[2]) {
       const usuarioCancel = decodeURIComponent(mInsc[2]);
-      // Solo si la inscripción existe como fila
-      const info = DB.prepare('DELETE FROM inscripciones WHERE evento_id = ? AND usuario = ?').run(eventoId, usuarioCancel);
+      const info = await DB.consulta('DELETE FROM inscripciones WHERE evento_id = $1 AND usuario = $2', [eventoId, usuarioCancel]);
       // También quitarlo del array participantes del evento si estaba ahí
-      const ev = DB.prepare('SELECT participantes FROM eventos WHERE id = ?').get(eventoId);
-      if (ev && ev.participantes) {
+      const ev = await DB.consulta('SELECT participantes FROM eventos WHERE id = $1', [eventoId]);
+      if (ev.rows[0] && ev.rows[0].participantes) {
         let base = [];
-        try { base = JSON.parse(ev.participantes); } catch (e) {}
+        try { base = JSON.parse(ev.rows[0].participantes); } catch (e) {}
         const filtrado = base.filter(p => p !== usuarioCancel);
-        DB.prepare('UPDATE eventos SET participantes = ? WHERE id = ?').run(JSON.stringify(filtrado), eventoId);
+        await DB.consulta('UPDATE eventos SET participantes = $1 WHERE id = $2', [JSON.stringify(filtrado), eventoId]);
       }
-      return json(res, 200, { eliminado: info.changes > 0, usuario: usuarioCancel });
+      return json(res, 200, { eliminado: info.rowCount > 0, usuario: usuarioCancel });
     }
 
     return json(res, 405, { error: 'Método no permitido' });
@@ -293,21 +293,22 @@ function manejar(req, res) {
   if (mFoto) {
     const eventoId = Number(mFoto[1]);
     if (req.method === 'GET') {
-      const filas = DB.prepare('SELECT id, datos FROM fotos WHERE evento_id = ? ORDER BY created_at ASC').all(eventoId);
-      return json(res, 200, filas.map(f => ({ id: f.id, datos: f.datos })));
+      const filas = await DB.consulta('SELECT id, datos FROM fotos WHERE evento_id = $1 ORDER BY created_at ASC', [eventoId]);
+      return json(res, 200, filas.rows.map(f => ({ id: f.id, datos: f.datos })));
     }
     if (req.method === 'POST') {
-      const staff = exigirStaff(req, res);
+      const staff = await exigirStaff(req, res);
       if (!staff) return;
-      const ev = DB.prepare('SELECT id, nombre FROM eventos WHERE id = ?').get(eventoId);
-      if (!ev) return json(res, 404, { error: 'Evento no encontrado' });
-      return leerCuerpo(req).then((cuerpo) => {
-        const datos = String(cuerpo.datos || '');
-        if (!datos.startsWith('data:image')) return json(res, 400, { error: 'Imagen inválida' });
-        const info = DB.prepare('INSERT INTO fotos (evento_id, datos, created_at) VALUES (?,?,?)')
-          .run(eventoId, datos, new Date().toISOString());
-        return json(res, 201, { id: info.lastInsertRowid, evento: ev.nombre });
-      }).catch((err) => json(res, 400, { error: err.message }));
+      const ev = await DB.consulta('SELECT id, nombre FROM eventos WHERE id = $1', [eventoId]);
+      if (!ev.rows[0]) return json(res, 404, { error: 'Evento no encontrado' });
+      const cuerpo = await leerCuerpo(req);
+      const datos = String(cuerpo.datos || '');
+      if (!datos.startsWith('data:image')) return json(res, 400, { error: 'Imagen inválida' });
+      const info = await DB.consulta(
+        'INSERT INTO fotos (evento_id, datos, created_at) VALUES ($1, $2, $3) RETURNING id',
+        [eventoId, datos, new Date().toISOString()]
+      );
+      return json(res, 201, { id: info.rows[0].id, evento: ev.rows[0].nombre });
     }
     return json(res, 405, { error: 'Método no permitido' });
   }
@@ -321,14 +322,15 @@ function manejar(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  try {
-    manejar(req, res);
-  } catch (err) {
+  manejar(req, res).catch((err) => {
     console.error('Error manejando petición:', err);
     json(res, 500, { error: 'Error interno del servidor' });
-  }
+  });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`✔ API Soporte Movistar escuchando en http://${HOST}:${PORT}`);
-});
+(async () => {
+  await DB.inicializar();
+  server.listen(PORT, HOST, () => {
+    console.log(`✔ API Soporte Movistar escuchando en http://${HOST}:${PORT}`);
+  });
+})();

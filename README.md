@@ -34,9 +34,9 @@ Una **sala de eventos** que centraliza los torneos, capturas, concursos y activi
 - **CSS3** (variables para temas claro/oscuro)
 - **JavaScript vanilla**
 - **JSON** para los datos
-- **[Opcional]** API Node.js (v22+) + SQLite (`api/`) para sincronización centralizada
+- **[Recomendado]** API Node.js (v18+) + **PostgreSQL** (`api/`) para sincronización centralizada
 
-El sitio funciona **sin servidor** en **GitHub Pages** (modo offline con `localStorage`). Si además levantas la **API opcional**, los eventos, inscripciones y fotos se centralizan y se sincronizan para todo el clan en tiempo real.
+El sitio funciona **sin servidor** en **GitHub Pages** (modo offline con `localStorage`). Si además levantas la **API**, los eventos, inscripciones y fotos se centralizan y se sincronizan para todo el clan en tiempo real, guardados en una base **PostgreSQL** (Supabase).
 
 ---
 
@@ -64,10 +64,10 @@ Soporte-Movistar-Eventos/
 │   ├── miembros.js     → Lógica de miembros
 │   └── historial.js    → Lógica del historial
 │
-├── api/                → Backend opcional (Node.js + SQLite, sin dependencias)
+├── api/                → Backend (Node.js + PostgreSQL/Supabase, `npm install`)
 │   ├── server.js       → Servidor HTTP con las rutas de la API
-│   ├── db.js           → Base de datos SQLite (eventos, inscripciones, fotos)
-│   └── package.json    → Metadata (script `npm start`)
+│   ├── db.js           → Capa de base de datos (tablas, seed de usuarios)
+│   └── package.json    → Dependencias (`pg`) + script `npm start`
 │
 ├── render.yaml         → Blueprint de Render para desplegar la API con un clic
 │
@@ -142,12 +142,13 @@ Los eventos creados por staff (botón ➕) llevan la etiqueta **LOCAL** y aparec
 
 ---
 
-## ⚙️ La API centralizada (opcional pero recomendada)
+## ⚙️ La API centralizada (recomendada)
 
-Para que los **eventos**, las **inscripciones** y la **galería de fotos** se sincronicen para **todo el clan** (sin que el staff tenga que copiar JSON a mano), el proyecto incluye una pequeña API backend totalmente gratis de mantener:
+Para que los **eventos**, las **inscripciones** y la **galería de fotos** se sincronicen para **todo el clan** (sin que el staff tenga que copiar JSON a mano), el proyecto incluye una pequeña API backend, desplegada gratis en Render.com:
 
-- **`api/`** → servidor en **Node.js puro** (usa el módulo integrado `node:sqlite`, por lo que **no requiere ninguna dependencia externa** ni `npm install`).
-- Guarda la base de datos en un archivo SQLite (`api/data/soporte.db`).
+- **`api/`** → servidor en **Node.js** (HTTP puro + cliente PostgreSQL `pg`).
+- Los datos se guardan en **PostgreSQL** mediante **Supabase** (capa gratuita: 500 MB de base), así que **no se pierden al reiniciar el servidor** (a diferencia del disco efímero de Render).
+- Los usuarios del clan se **siembran** solos desde `data/usuarios.json` al arrancar (idempotente).
 - El sitio sigue funcionando **sin** la API (modo offline con `localStorage`); cuando detecta que la API responde, la usa automáticamente.
 - La API valida permisos de staff y la **ventana temporal de inscripción** (cerrada hasta el inicio / abierta mientras dure).
 
@@ -159,6 +160,7 @@ Para que los **eventos**, las **inscripciones** y la **galería de fotos** se si
 | `POST` | `/api/auth` | Valida un nombre de usuario contra la base. |
 | `GET` | `/api/eventos-staff` | Lista los eventos centralizados. |
 | `POST` | `/api/eventos-staff` | Crea un evento (solo staff, header `X-Usuario`). |
+| `DELETE` | `/api/eventos-staff/:id` | Elimina un evento y sus inscripciones/fotos (solo staff). |
 | `GET` | `/api/eventos/:id/inscripciones` | Lista inscripciones + participantes de un evento. |
 | `POST` | `/api/eventos/:id/inscripciones` | Inscribe a un usuario (respeta la ventana temporal). |
 | `DELETE` | `/api/eventos/:id/inscripciones/:usuario` | Cancela una inscripción. |
@@ -167,14 +169,16 @@ Para que los **eventos**, las **inscripciones** y la **galería de fotos** se si
 
 ### 🖥️ Cómo ejecutar la API en local
 
-Requisito: **Node.js v22.5 o superior** (usa `node:sqlite`, incluido desde Node 22).
+Requisitos: **Node.js v18+** y una base PostgreSQL. Para desarrollo puedes usar tu **Supabase** (misma base que producción).
 
 ```bash
 cd Soporte-Movistar-Eventos/api
+npm install                # Instala la dependencia 'pg'
+$env:DATABASE_URL = 'postgresql://postgres.PROYECTO:CONTRASENA@aws-0-...pooler.supabase.com:5432/postgres'
 node server.js
 ```
 
-Aparecerá: `✔ API Soporte Movistar escuchando en http://0.0.0.0:3000`.
+Aparecerá: `✔ API Soporte Movistar escuchando en http://0.0.0.0:3000`. Al arrancar crea las tablas y siembra los usuarios del clan.
 
 ### 🔗 Conectando el sitio a la API
 
@@ -182,35 +186,38 @@ La URL de la API se configura en **un solo archivo**: `js/config.js`.
 
 ```js
 // js/config.js
-window.API_BASE_URL = 'http://localhost:3000'; // URL de la API del clan
+window.API_BASE_URL = 'https://soporte-movistar-api.onrender.com'; // URL de la API del clan
 ```
 
-- En **local**, déjala como `http://localhost:3000`.
-- En **producción**, cámbiala por la URL pública de tu API (p. ej. `https://tu-api.onrender.com`).
+- En **local**, pon `http://localhost:3000`.
+- En **producción**, deja la URL pública de Render (la actual es `https://soporte-movistar-api.onrender.com`).
 
 > No hace falta tocar las 5 páginas HTML: todas leen `js/config.js`.
 
-### 🚀 Cómo alojar la API gratis (Render.com)
+### 🚀 Cómo alojar la API gratis (Render.com + Supabase)
 
-El proyecto incluye un **blueprint** (`render.yaml`) para desplegar con un clic.
+**1) Crea la base en Supabase (gratis):**
+1. Crea una cuenta en [supabase.com](https://supabase.com) → **New project**.
+2. Anota la **contraseña** de la base (no se vuelve a mostrar).
+3. En el panel: botón **Connect → Session pooler** (puerto **5432**) y copia la connection string:
+   ```
+   postgresql://postgres.<proyecto>:<CONTRASENA>@aws-0-<region>.pooler.supabase.com:5432/postgres
+   ```
+   (cambia `<CONTRASENA>` por la tuya). Es tu `DATABASE_URL`.
 
-**Opción A: con el blueprint (recomendado)**
-1. Sube el proyecto a un **repositorio de GitHub** (incluida la carpeta `api/` y `render.yaml`).
-2. En [render.com](https://render.com) entra a **New → Blueprint**, conéctalo al repositorio y deja que Render lo configure solo.
+**2) Despliega en Render:**
+- El proyecto incluye un **blueprint** (`render.yaml`). En [render.com](https://render.com) → **New → Blueprint** y conéctalo al repositorio.
+- ✓ Importante: agrega la variable **`DATABASE_URL`** con tu connection string de Supabase (como **Secret** en *Environment* del servicio).
 
-**Opción B: a mano (Web Service)**
-1. Sube el proyecto a un **repositorio de GitHub**.
-2. En [render.com](https://render.com) crea un **"New → Web Service"**.
-3. Configura:
-   - **Root Directory**: `api`
-   - **Build Command**: (vacío, no requiere build)
-   - **Start Command**: `node server.js`
-4. Espera a que se despliegue y copia la URL que te da Render (algo como `https://mi-api.onrender.com`).
-5. Pega esa URL en `js/config.js` y vuelve a subir el sitio a GitHub Pages.
+**Alternativa a mano (Web Service):**
+- **Root Directory**: `api`
+- **Build Command**: `npm install`
+- **Start Command**: `node server.js`
+- En *Environment*, agrega la variable **`DATABASE_URL`** (Secret) con la connection string de Supabase.
 
-> 💡 En Render, la variable de entorno `PORT` se asigna automáticamente; la API ya la respeta (`process.env.PORT`).
+> 💡 En Render, `PORT` se asigna automáticamente; la API ya la respeta (`process.env.PORT`).
 
-> ⚠️ Render tiene **disco efímero**: la base SQLite se pierde cada vez que el servicio se reinicia. Si quieres persistencia real y duradera, usa un servicio con disco persistente (ej. Railway con volumen) o conecta un PostgreSQL externo. Para un clan/prueba, el disco efímero suele ser suficiente.
+> ⚠️ **No** subas tu `DATABASE_URL` en `render.yaml` ni en ningún archivo del repositorio: pásala como **variable de entorno (Secret)** en Render. La base SQLite local ya no se usa (los datos viven en Supabase y sobreviven a los reinicios de Render).
 
 ### 🔄 Qué cambia al activar la API
 
