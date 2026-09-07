@@ -55,6 +55,7 @@ async function inicializar() {
       estado      TEXT NOT NULL DEFAULT 'proximo',
       descripcion TEXT,
       ubicacion   TEXT,
+      region      TEXT,
       organizador TEXT,
       premio      TEXT,
       reglas      TEXT,
@@ -66,6 +67,12 @@ async function inicializar() {
       created_at  TEXT NOT NULL
     );
   `);
+
+  try {
+    await consulta(`ALTER TABLE eventos ADD COLUMN IF NOT EXISTS region TEXT;`);
+  } catch (err) {
+    console.log('(region) ' + err.message);
+  }
 
   await consulta(`
     CREATE TABLE IF NOT EXISTS inscripciones (
@@ -82,6 +89,18 @@ async function inicializar() {
       id         SERIAL PRIMARY KEY,
       evento_id  INTEGER NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
       datos      TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  await consulta(`
+    CREATE TABLE IF NOT EXISTS emparejamientos (
+      id         SERIAL PRIMARY KEY,
+      evento_id  INTEGER NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+      ronda      INTEGER NOT NULL DEFAULT 1,
+      jugador1   TEXT NOT NULL,
+      jugador2   TEXT,
+      ganador    TEXT,
       created_at TEXT NOT NULL
     );
   `);

@@ -64,6 +64,23 @@
       return pedir('/api/eventos-staff/' + eventoId, { method: 'DELETE' });
     },
 
+    // ---- Llaves / emparejamientos de torneos ----
+    async listarEmparejamientos(eventoId) {
+      return pedir('/api/eventos/' + eventoId + '/emparejamientos');
+    },
+    async crearEmparejamiento(eventoId, datos) {
+      return pedir('/api/eventos/' + eventoId + '/emparejamientos', { method: 'POST', body: datos });
+    },
+    async sortearEmparejamientos(eventoId, ronda) {
+      return pedir('/api/eventos/' + eventoId + '/emparejamientos/sortear', { method: 'POST', body: { ronda } });
+    },
+    async actualizarEmparejamiento(eventoId, emparejamientoId, datos) {
+      return pedir('/api/eventos/' + eventoId + '/emparejamientos/' + emparejamientoId, { method: 'PATCH', body: datos });
+    },
+    async eliminarEmparejamiento(eventoId, emparejamientoId) {
+      return pedir('/api/eventos/' + eventoId + '/emparejamientos/' + emparejamientoId, { method: 'DELETE' });
+    },
+
     // ---- Inscripciones ----
     async listarInscripciones(eventoId) {
       return pedir('/api/eventos/' + eventoId + '/inscripciones');

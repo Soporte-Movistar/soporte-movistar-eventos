@@ -837,6 +837,7 @@ function construirModalDetalle(evento) {
   const cuerpo = modalFinal.querySelector('#modal-cuerpo');
 
   const participantes = participantesDelEvento(evento);
+  const esLlaves = esEventoDeLlaves(evento);
 
   const banner = activo
     ? '<span class="estado estado-en_curso" style="font-size:.85rem">EVENTO ACTIVO</span>'
@@ -891,11 +892,8 @@ function construirModalDetalle(evento) {
         <div class="staff-botones">
           <button class="btn btn-borde" id="btn-copiar-participantes">📋 Copiar lista de participantes</button>
           ${botonFotos}
-          ${esLocal ? `
-            <button class="btn btn-borde" id="btn-copiar-json">🧾 Copiar JSON del evento</button>
-            <button class="btn btn-borde btn-peligro" id="btn-eliminar-local">🗑 Eliminar evento local</button>` : ''}
+          <button class="btn btn-borde btn-peligro" id="btn-eliminar-evento">🗑 Eliminar evento</button>
         </div>
-        ${esLocal ? '<p class="staff-aviso">Este evento aún es local (solo se ve en este navegador). <strong>Copia su JSON y pégalo en <code>data/eventos.json</code></strong> para publicarlo para todos.</p>' : ''}
         <input type="file" id="input-fotos-evento" accept="image/*" multiple hidden>
       </div>`;
   }
@@ -911,6 +909,7 @@ function construirModalDetalle(evento) {
             ${evento.fechaFin ? `<div class="modal-info-item"><span class="mii-label">Finaliza</span><span class="mii-valor">${formatearFechaLarga(evento.fechaFin)} ${evento.horaFin ? `· ${escaparHTML(evento.horaFin)} hs` : ''}</span></div>` : ''}
       <div class="modal-info-item"><span class="mii-label">Tipo</span><span class="mii-valor">${escaparHTML(tipoIcono)} ${escaparHTML(evento.tipo)}</span></div>
       <div class="modal-info-item"><span class="mii-label">Ubicación</span><span class="mii-valor">${escaparHTML(evento.ubicacion || 'Por definir')}</span></div>
+      ${evento.region ? `<div class="modal-info-item"><span class="mii-label">Región</span><span class="mii-valor">${escaparHTML(evento.region)}</span></div>` : ''}
       <div class="modal-info-item"><span class="mii-label">Organizador</span><span class="mii-valor">${escaparHTML(evento.organizador || 'Soporte Movistar')}</span></div>
       <div class="modal-info-item"><span class="mii-label">Premio</span><span class="mii-valor">🏆 ${escaparHTML(evento.premio || 'Premio del evento')}</span></div>
     </div>
@@ -922,6 +921,11 @@ function construirModalDetalle(evento) {
       <h4>Participantes (${participantes.length})</h4>
       ${listaParticipantes}
     </div>
+    ${esLlaves ? `
+    <div class="modal-seccion">
+      <h4>⚔️ Llaves / Rondas</h4>
+      <div id="llaves-evento"><p>Cargando llaves...</p></div>
+    </div>` : ''}
     <div class="modal-seccion">
       <h4>Inscripción</h4>
       <p class="inscripcion-politica">
@@ -979,22 +983,23 @@ function construirModalDetalle(evento) {
     });
   }
 
-  const copiarJson = cuerpo.querySelector('#btn-copiar-json');
-  if (copiarJson) {
-    copiarJson.addEventListener('click', () => {
-      const limpio = { ...evento, _local: undefined };
-      delete limpio._local;
-      copiarAlPortapapeles(JSON.stringify(limpio, null, 2), '🧾 JSON del evento copiado');
-    });
-  }
-
-  const eliminarLocal = cuerpo.querySelector('#btn-eliminar-local');
-  if (eliminarLocal) {
-    eliminarLocal.addEventListener('click', () => {
-      if (confirm(`¿Eliminar el evento local "${evento.nombre}"? Esta acción no se puede deshacer.`)) {
+  // --- Eliminar evento (solo staff, con confirmación) ---
+  const btnEliminarEvento = cuerpo.querySelector('#btn-eliminar-evento');
+  if (btnEliminarEvento) {
+    btnEliminarEvento.addEventListener('click', async () => {
+      const seguro = confirm(`⚠️ ¿Eliminar el evento "${evento.nombre}"?\n\nEsta acción no se puede revertir: se quitan también sus inscripciones y fotos.`);
+      if (!seguro) return;
+      try {
+        const idApi = idApiDeEvento(evento);
+        if (idApi && apiActiva()) {
+          await window.SM_API.eliminarEvento(idApi);
+        }
         eliminarEventoLocal(evento.id);
         cerrarModal(modalFinal);
-        mostrarToast('🗑 Evento local eliminado.');
+        mostrarToast('🗑 Evento eliminado.');
+        document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
+      } catch (err) {
+        mostrarToast(`⚠️ No se pudo eliminar: ${err.message || 'error'}`);
       }
     });
   }
@@ -1031,6 +1036,10 @@ function construirModalDetalle(evento) {
 
   // Cargar inscripciones/participantes remotos de la API (eventos centralizados)
   const idApi = idApiDeEvento(evento);
+  const contenedorLlaves = cuerpo.querySelector('#llaves-evento');
+  if (contenedorLlaves) {
+    construirLlaves({ contenedor: contenedorLlaves, idApi, participantes, sesion });
+  }
   if (idApi && apiActiva()) {
     apiEstaDisponible().then((disponible) => {
       if (!disponible) return;
@@ -1053,10 +1062,204 @@ function construirModalDetalle(evento) {
                 : '<li>Sin participantes todavía.</li>';
             }
           }
+          if (contenedorLlaves) {
+            construirLlaves({ contenedor: contenedorLlaves, idApi, participantes: todos, sesion });
+          }
         })
         .catch(() => {});
     });
   }
+}
+
+/* ---------- Llaves / rondas de torneos ---------- */
+
+/**
+ * Un evento usa llaves si es un torneo o un PvP (el staff arma los cruces).
+ */
+function esEventoDeLlaves(evento) {
+  const t = String(evento.tipo || '').toLowerCase();
+  return t === 'torneo' || t === 'pvp';
+}
+
+/** Los jugadores disponibles para un cruce: participantes + ganadores. */
+function leadsDeLlaves(emparejamientos, participantes) {
+  const leads = new Set((participantes || []).map(p => String(p)));
+  (emparejamientos || []).forEach(e => {
+    if (e.ganador) leads.add(String(e.ganador));
+  });
+  return [...leads].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+/**
+ * Renderiza las llaves del evento. Si la API está disponible consulta los
+ * cruces centralizados; si no, usa los guardados en el objeto evento.
+ */
+function construirLlaves(opciones) {
+  const contenedor = opciones.contenedor;
+  const idApi = opciones.idApi;
+  const participantes = opciones.participantes || [];
+  const sesion = opciones.sesion || obtenerSesion();
+  const esStaff = !!(sesion && sesion.esStaff);
+  const evento = opciones.evento;
+
+  const render = (emparejamientos) => {
+    const lista = emparejamientos || [];
+
+    const porRonda = {};
+    lista.forEach(e => {
+      (porRonda[e.ronda] = porRonda[e.ronda] || []).push(e);
+    });
+    const rondas = Object.keys(porRonda).map(Number).sort((a, b) => a - b);
+    const utRonda = Math.max(...rondas, 0);
+    const leads = leadsDeLlaves(lista, participantes);
+
+    // Barra de herramientas del staff: siempre visible para staff, tenga o no cruces
+    let toolbar = '';
+    if (esStaff) {
+      const opcionesRonda = `${rondas.map(r => `<option value="${r}">Ronda ${r}</option>`).join('')}
+          <option value="${utRonda + 1}">Ronda ${utRonda + 1} (o nueva)</option>`;
+      toolbar = `
+        <div class="llaves-toolbar">
+          <div class="llaves-sort">
+            <select id="llaves-sortear-ronda">${opcionesRonda}</select>
+            <button class="btn btn-amarillo btn-mini" id="llaves-sortear">🎲 Sortear sin rival</button>
+          </div>
+          <div class="llaves-admin-crear">
+            <select id="llaves-nuevo-ronda">${opcionesRonda}</select>
+            <select id="llaves-nuevo-j1">
+              <option value="">— jugador 1 —</option>
+              ${leads.map(n => `<option value="${n}">${n}</option>`).join('')}
+            </select>
+            <select id="llaves-nuevo-j2">
+              <option value="">— jugador 2 (opcional: bye) —</option>
+              ${leads.map(n => `<option value="${n}">${n}</option>`).join('')}
+            </select>
+            <button class="btn btn-borde btn-mini" id="llaves-crear-cruce">Agregar cruce</button>
+          </div>
+        </div>`;
+    }
+
+    if (!lista.length) {
+      contenedor.innerHTML =
+        toolbar +
+        '<p>Aún no hay enfrentamientos armados.</p>' +
+        '<p class="llaves-pista">El staff puede ir sorteando (o armando) los cruces mientras se anotan los jugadores.</p>';
+      vincularAccionesLlaves(contenedor, { idApi, emparejamientos: lista, participantes, esStaff, render });
+      return;
+    }
+
+    const html = rondas.map((ronda) => {
+      const cruces = porRonda[ronda].map((e) => {
+        const rival2 = e.jugador2
+          ? `<span class="llaves-nombre">${escaparHTML(e.jugador2)}</span>`
+          : '<span class="llaves-pase">Pasa (bye)</span>';
+        let ganadorHtml = '';
+        if (e.ganador) {
+          ganadorHtml = `<div class="llaves-cruz-ganador">🏆 ${escaparHTML(e.ganador)}</div>`;
+        }
+        let adminHtml = '';
+        if (esStaff) {
+          const opts = leads.map(n =>
+            `<option value="${n}" ${e.ganador === n ? 'selected' : ''}>${n}</option>`
+          ).join('');
+          adminHtml = `
+            <div class="llaves-admin">
+              <select data-llave-ganador="${e.id}">
+                <option value="">— sin ganador —</option>
+                ${opts}
+              </select>
+              <button class="btn btn-borde btn-mini" data-llave-borrar="${e.id}">Eliminar</button>
+            </div>`;
+        }
+        return `
+          <div class="llaves-cruce" data-llave-id="${e.id}">
+            <div class="llaves-jugadores">
+              <span class="llaves-nombre">${escaparHTML(e.jugador1)}</span>
+              <span class="llaves-vs">vs</span>
+              ${rival2}
+            </div>
+            ${ganadorHtml}
+            ${adminHtml}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="llaves-ronda">
+          <div class="llaves-ronda-titulo">Ronda ${ronda}</div>
+          <div class="llaves-cruces">${cruces}</div>
+        </div>`;
+    }).join('');
+
+    contenedor.innerHTML = toolbar + html;
+    vincularAccionesLlaves(contenedor, { idApi, emparejamientos: lista, participantes, esStaff, render });
+  };
+
+  if (idApi && apiActiva() && typeof window.SM_API.listarEmparejamientos === 'function') {
+    window.SM_API.listarEmparejamientos(idApi)
+      .then((res) => render(Array.isArray(res) ? res : []))
+      .catch(() => render(evento && evento.emparejamientos));
+  } else {
+    render(evento && evento.emparejamientos);
+  }
+}
+
+/* Conecta los botones/selects de las llaves a la API (solo staff). */
+function vincularAccionesLlaves(contenedor, ctx) {
+  const { idApi, render } = ctx;
+  const avisoLocal = () => mostrarToast('⚠️ Este evento es local: no se pueden armar llaves acá.');
+
+  const btnSortear = contenedor.querySelector('#llaves-sortear');
+  if (btnSortear) {
+    btnSortear.addEventListener('click', () => {
+      if (!idApi) { avisoLocal(); return; }
+      const ronda = Number(contenedor.querySelector('#llaves-sortear-ronda').value) || 1;
+      btnSortear.disabled = true;
+      window.SM_API.sortearEmparejamientos(idApi, ronda)
+        .then(() => window.SM_API.listarEmparejamientos(idApi).then(render))
+        .then(() => mostrarToast('🎲 Sorteo completado.'))
+        .catch((err) => mostrarToast(err.message))
+        .finally(() => { btnSortear.disabled = false; });
+    });
+  }
+
+  const btnCrear = contenedor.querySelector('#llaves-crear-cruce');
+  if (btnCrear) {
+    btnCrear.addEventListener('click', () => {
+      if (!idApi) { avisoLocal(); return; }
+      const ronda = Number(contenedor.querySelector('#llaves-nuevo-ronda').value) || 1;
+      const j1 = contenedor.querySelector('#llaves-nuevo-j1').value;
+      const j2 = contenedor.querySelector('#llaves-nuevo-j2').value;
+      if (!j1) { mostrarToast('Elegí el jugador 1.'); return; }
+      window.SM_API.crearEmparejamiento(idApi, { ronda, jugador1: j1, jugador2: j2 || undefined })
+        .then(() => window.SM_API.listarEmparejamientos(idApi).then(render))
+        .then(() => mostrarToast('⚔️ Cruce agregado.'))
+        .catch((err) => mostrarToast(err.message));
+    });
+  }
+
+  contenedor.querySelectorAll('[data-llave-ganador]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      if (!idApi) { avisoLocal(); return; }
+      const id = Number(sel.getAttribute('data-llave-ganador'));
+      const ganador = sel.value || null;
+      window.SM_API.actualizarEmparejamiento(idApi, id, { ganador })
+        .then(() => window.SM_API.listarEmparejamientos(idApi).then(render))
+        .then(() => mostrarToast(ganador ? `🏆 Ganador: ${ganador}` : 'Ganador quitado.'))
+        .catch((err) => mostrarToast(err.message));
+    });
+  });
+
+  contenedor.querySelectorAll('[data-llave-borrar]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!idApi) { avisoLocal(); return; }
+      const id = Number(btn.getAttribute('data-llave-borrar'));
+      if (!confirm('¿Eliminar este cruce?')) return;
+      window.SM_API.eliminarEmparejamiento(idApi, id)
+        .then(() => window.SM_API.listarEmparejamientos(idApi).then(render))
+        .then(() => mostrarToast('🗑 Cruce eliminado.'))
+        .catch((err) => mostrarToast(err.message));
+    });
+  });
 }
 
 function recargarModal(evento) {
@@ -1081,6 +1284,17 @@ function abrirModalCrearEvento() {
 
   const tipos = Object.keys(TIPO_EMOJIS);
 
+  const regiones = window.LUGARES_REGIONES || {};
+  const hayLugares = Object.keys(regiones).length > 0;
+  const regionInicial = Object.keys(regiones)[0] || '';
+
+  const htmlLugarOpciones = (region) => {
+    const d = regiones[region];
+    if (!d) return '';
+    const opciones = ['Por definir'].concat(d.ciudades, d.islas || [], d.rutas, d.destacados);
+    return opciones.map(v => `<option value="${v}">${v}</option>`).join('');
+  };
+
   abrirModalCabecera(modal, 'Crear nuevo evento', '➕', '');
 
   const cuerpo = modal.querySelector('#modal-cuerpo');
@@ -1093,22 +1307,22 @@ function abrirModalCrearEvento() {
       </label>
       <div class="campos-dos">
         <label class="campo">
-          <span class="campo-label">Fecha *</span>
+          <span class="campo-label">Fecha de inicio *</span>
           <input type="date" id="ev-fecha" required>
         </label>
         <label class="campo">
-          <span class="campo-label">Hora</span>
+          <span class="campo-label">Hora de inicio</span>
           <input type="time" id="ev-hora" value="20:00">
         </label>
       </div>
       <div class="campos-dos">
         <label class="campo">
-          <span class="campo-label">Fecha de finalización</span>
-          <input type="date" id="ev-fecha-fin">
+          <span class="campo-label">Fecha de finalización *</span>
+          <input type="date" id="ev-fecha-fin" required>
         </label>
         <label class="campo">
           <span class="campo-label">Hora de finalización</span>
-          <input type="time" id="ev-hora-fin">
+          <input type="time" id="ev-hora-fin" value="20:00">
         </label>
       </div>
       <label class="campo">
@@ -1117,6 +1331,7 @@ function abrirModalCrearEvento() {
           <option value="cerrada">Cerradas (terminan al empezar el evento)</option>
           <option value="abierta">Abiertas (se puede seguir inscribiendo mientras dure)</option>
         </select>
+        <span class="form-aviso" style="margin-top:.5rem">📅 El evento se publica con antelación (días antes) para que todos tengan plazo de anotarse. Con inscripciones cerradas, la inscripción termina cuando empieza el evento.</span>
       </label>
       <div class="campos-dos">
         <label class="campo">
@@ -1133,10 +1348,24 @@ function abrirModalCrearEvento() {
           </select>
         </label>
       </div>
+      ${hayLugares ? `
+      <div class="campos-dos">
+        <label class="campo">
+          <span class="campo-label">Región</span>
+          <select id="ev-region">
+            ${Object.keys(regiones).map(r => `<option value="${r}">${regiones[r].etiqueta}</option>`).join('')}
+          </select>
+        </label>
+        <label class="campo">
+          <span class="campo-label">Lugar</span>
+          <select id="ev-ubicacion">${htmlLugarOpciones(regionInicial)}</select>
+        </label>
+      </div>`
+      : `
       <label class="campo">
         <span class="campo-label">Ubicación / zona</span>
         <input type="text" id="ev-ubicacion" maxlength="60" placeholder="Ej: Ciudad Férrica">
-      </label>
+      </label>`}
       <label class="campo">
         <span class="campo-label">Premio</span>
         <input type="text" id="ev-premio" maxlength="80" placeholder="Ej: 1x Shiny + 5.000.000 pokédolares">
@@ -1162,6 +1391,15 @@ function abrirModalCrearEvento() {
   `;
 
   const form = cuerpo.querySelector('#form-nuevo-evento');
+
+  const selRegion = cuerpo.querySelector('#ev-region');
+  if (selRegion) {
+    const selLugar = cuerpo.querySelector('#ev-ubicacion');
+    selRegion.addEventListener('change', () => {
+      selLugar.innerHTML = htmlLugarOpciones(selRegion.value);
+    });
+  }
+
   form.addEventListener('submit', (evento) => {
     evento.preventDefault();
     const nombre = document.getElementById('ev-nombre').value.trim();
@@ -1169,7 +1407,19 @@ function abrirModalCrearEvento() {
     const tipo = document.getElementById('ev-tipo').value;
 
     if (!nombre || !fecha) {
-      mostrarToast('Completá al menos el nombre y la fecha.');
+      mostrarToast('Completá al menos el nombre y la fecha de inicio.');
+      return;
+    }
+
+    const fechaFin = document.getElementById('ev-fecha-fin').value;
+    const horaInicio = document.getElementById('ev-hora').value || '20:00';
+    const horaFin = document.getElementById('ev-hora-fin').value || '20:00';
+    if (fechaFin && fechaFin < fecha) {
+      mostrarToast('⚠️ La fecha de finalización no puede ser anterior a la de inicio.');
+      return;
+    }
+    if (fechaFin === fecha && horaFin <= horaInicio) {
+      mostrarToast('⚠️ Si finaliza el mismo día, la hora de finalización debe ser posterior a la de inicio.');
       return;
     }
 
@@ -1191,6 +1441,7 @@ function abrirModalCrearEvento() {
       estado: document.getElementById('ev-estado').value,
       descripcion: document.getElementById('ev-descripcion').value.trim() || 'Evento organizado por el clan Soporte Movistar.',
       ubicacion: document.getElementById('ev-ubicacion').value.trim() || 'Por definir',
+      region: selRegion ? selRegion.value : '',
       organizador: sesion.nombre,
       premio: document.getElementById('ev-premio').value.trim() || 'Por confirmar',
       imagen: '',
@@ -1212,19 +1463,12 @@ function abrirModalCrearEvento() {
         <h3>Evento guardado</h3>
         ${apiActiva()
           ? `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya aparece en la lista y se está publicando de forma <strong>centralizada</strong> para todo el clan.</p>`
-          : `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya aparece en la lista (con la etiqueta LOCAL).</p>
-             <p>Para publicarlo para todo el clan, copia el JSON y pégalo dentro de <code>data/eventos.json</code> (respetando las llaves del archivo).</p>`}
+          : `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya aparece en la lista (con la etiqueta LOCAL).</p>`}
         <div class="staff-botones">
-          <button type="button" class="btn btn-amarillo" id="btn-copiar-nuevo-json">🧾 Copiar JSON</button>
           <button type="button" class="btn btn-borde" id="btn-creacion-list" data-cerrar>Listo</button>
         </div>
       </div>`;
 
-    cuerpo.querySelector('#btn-copiar-nuevo-json').addEventListener('click', () => {
-      const limpio = { ...nuevoEvento, _local: undefined };
-      delete limpio._local;
-      copiarAlPortapapeles(JSON.stringify(limpio, null, 2), '🧾 JSON del evento copiado');
-    });
     cuerpo.querySelector('#btn-creacion-list').addEventListener('click', () => cerrarModal(modal));
   });
 }

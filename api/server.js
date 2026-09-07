@@ -20,8 +20,8 @@ const ORIGEN_PERMITIDO = process.env.CORS_ORIGIN || '*';
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': ORIGEN_PERMITIDO,
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Usuario',
     'Content-Type': 'application/json; charset=utf-8'
   };
 }
@@ -98,6 +98,7 @@ function leerEvento(row) {
     estado: row.estado,
     descripcion: row.descripcion,
     ubicacion: row.ubicacion,
+    region: row.region || '',
     organizador: row.organizador,
     premio: row.premio,
     reglas: parse(row.reglas),
@@ -125,6 +126,7 @@ function crearEventoDesdeCuerpo(cuerpo, usuario) {
     estado: String(cuerpo.estado || 'proximo'),
     descripcion: String(cuerpo.descripcion || ''),
     ubicacion: String(cuerpo.ubicacion || ''),
+    region: String(cuerpo.region || ''),
     organizador: String(cuerpo.organizador || usuario.nombre),
     premio: String(cuerpo.premio || ''),
     reglas: parse('reglas'),
@@ -133,6 +135,20 @@ function crearEventoDesdeCuerpo(cuerpo, usuario) {
     resultados: parse('resultados'),
     observaciones: String(cuerpo.observaciones || ''),
     creado_por: usuario.nombre
+  };
+}
+
+/** Interpreta una fila de la tabla emparejamientos como objeto JSON. */
+function leerEmparejamiento(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    eventoId: row.evento_id,
+    ronda: row.ronda,
+    jugador1: row.jugador1,
+    jugador2: row.jugador2 || '',
+    ganador: row.ganador || '',
+    _api: true
   };
 }
 
@@ -169,15 +185,18 @@ async function manejar(req, res) {
     const cuerpo = await leerCuerpo(req);
     const ev = crearEventoDesdeCuerpo(cuerpo, staff);
     if (!ev.nombre) return json(res, 400, { error: 'El nombre es obligatorio' });
+    if (ev.fecha && ev.fechaFin && ev.fechaFin < ev.fecha) {
+      return json(res, 400, { error: 'La fecha de finalización no puede ser anterior a la de inicio' });
+    }
     const insert = await DB.consulta(`
       INSERT INTO eventos (nombre, tipo, tipoIcono, fecha, hora, fechaFin, horaFin, inscripcion,
-        estado, descripcion, ubicacion, organizador, premio, reglas, participantes, ganador,
+        estado, descripcion, ubicacion, region, organizador, premio, reglas, participantes, ganador,
         resultados, observaciones, creado_por, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING id
     `, [
       ev.nombre, ev.tipo, ev.tipoIcono, ev.fecha, ev.hora, ev.fechaFin, ev.horaFin, ev.inscripcion,
-      ev.estado, ev.descripcion, ev.ubicacion, ev.organizador, ev.premio, ev.reglas, ev.participantes,
+      ev.estado, ev.descripcion, ev.ubicacion, ev.region, ev.organizador, ev.premio, ev.reglas, ev.participantes,
       ev.ganador, ev.resultados, ev.observaciones, ev.creado_por, new Date().toISOString()
     ]);
     const id = insert.rows[0].id;
@@ -283,6 +302,162 @@ async function manejar(req, res) {
         await DB.consulta('UPDATE eventos SET participantes = $1 WHERE id = $2', [JSON.stringify(filtrado), eventoId]);
       }
       return json(res, 200, { eliminado: info.rowCount > 0, usuario: usuarioCancel });
+    }
+
+    return json(res, 405, { error: 'Método no permitido' });
+  }
+
+  // ---- Llaves / emparejamientos de torneos y PvP ----
+  const mElim = ruta.match(/^\/api\/eventos\/(\d+)\/emparejamientos(?:\/([^/]+))?$/);
+  if (mElim) {
+    const eventoId = Number(mElim[1]);
+    const evExiste = await DB.consulta('SELECT id FROM eventos WHERE id = $1', [eventoId]);
+    if (!evExiste.rows[0]) return json(res, 404, { error: 'Evento no encontrado' });
+    const mid = mElim[2];
+
+    // LISTAR llaves del evento (visible para todos)
+    if (req.method === 'GET') {
+      const filas = await DB.consulta(
+        'SELECT * FROM emparejamientos WHERE evento_id = $1 ORDER BY ronda ASC, id ASC',
+        [eventoId]
+      );
+      return json(res, 200, filas.rows.map(leerEmparejamiento));
+    }
+
+    // SORTEO automático de la ronda (solo staff)
+    if (req.method === 'POST' && mid === 'sortear') {
+      const staff = await exigirStaff(req, res);
+      if (!staff) return;
+      const cuerpo = await leerCuerpo(req);
+      const ronda = Number(cuerpo.ronda) || 1;
+      if (!Number.isInteger(ronda) || ronda < 1) return json(res, 400, { error: 'Ronda inválida' });
+
+      // Candidatos: ronda 1 => inscriptos + participantes; las demás => ganadores de la anterior
+      let candidatos = [];
+      if (ronda <= 1) {
+        const ins = await DB.consulta('SELECT usuario FROM inscripciones WHERE evento_id = $1', [eventoId]);
+        candidatos = ins.rows.map(f => f.usuario);
+        const ev = await DB.consulta('SELECT participantes FROM eventos WHERE id = $1', [eventoId]);
+        if (ev.rows[0]) {
+          let base = [];
+          try { base = JSON.parse(ev.rows[0].participantes || '[]'); } catch (e) {}
+          candidatos = [...new Set([...candidatos, ...base])];
+        }
+      } else {
+        const prev = await DB.consulta(
+          'SELECT DISTINCT ganador FROM emparejamientos WHERE evento_id = $1 AND ronda = $2 AND ganador IS NOT NULL',
+          [eventoId, ronda - 1]
+        );
+        candidatos = prev.rows.map(f => f.ganador);
+      }
+
+      if (candidatos.length < 2) return json(res, 400, { error: 'Faltan jugadores para sortear esta ronda' });
+
+      const ya = await DB.consulta(
+        'SELECT jugador1, jugador2 FROM emparejamientos WHERE evento_id = $1 AND ronda = $2',
+        [eventoId, ronda]
+      );
+      const usados = new Set();
+      ya.rows.forEach(f => { usados.add(f.jugador1); if (f.jugador2) usados.add(f.jugador2); });
+
+      const disponibles = candidatos.filter(c => !usados.has(c));
+      if (disponibles.length < 2) return json(res, 400, { error: 'Faltan jugadores sin rival para sortear' });
+
+      const mezclados = [...disponibles];
+      for (let i = mezclados.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [mezclados[i], mezclados[j]] = [mezclados[j], mezclados[i]];
+      }
+
+      const creados = [];
+      for (let i = 0; i + 1 < mezclados.length; i += 2) {
+        const info = await DB.consulta(
+          'INSERT INTO emparejamientos (evento_id, ronda, jugador1, jugador2, ganador, created_at) VALUES ($1,$2,$3,$4,NULL,$5) RETURNING *',
+          [eventoId, ronda, mezclados[i], mezclados[i + 1], new Date().toISOString()]
+        );
+        creados.push(leerEmparejamiento(info.rows[0]));
+      }
+      // Si quedó un jugador impar, pasa de ronda directamente
+      if (mezclados.length % 2 === 1) {
+        const ultimo = mezclados[mezclados.length - 1];
+        const info = await DB.consulta(
+          'INSERT INTO emparejamientos (evento_id, ronda, jugador1, jugador2, ganador, created_at) VALUES ($1,$2,$3,NULL,$3,$4) RETURNING *',
+          [eventoId, ronda, ultimo, new Date().toISOString()]
+        );
+        creados.push(leerEmparejamiento(info.rows[0]));
+      }
+      return json(res, 201, { creados });
+    }
+
+    // CREAR cruce manual (solo staff)
+    if (req.method === 'POST') {
+      const staff = await exigirStaff(req, res);
+      if (!staff) return;
+      const cuerpo = await leerCuerpo(req);
+      const ronda = Number(cuerpo.ronda) || 1;
+      const j1 = String(cuerpo.jugador1 || '').trim();
+      const j2 = cuerpo.jugador2 ? String(cuerpo.jugador2).trim() : '';
+      if (!j1 || !Number.isInteger(ronda) || ronda < 1) {
+        return json(res, 400, { error: 'Datos de cruce inválidos' });
+      }
+      if (j2 && j1 === j2) return json(res, 400, { error: 'Un jugador no puede enfrentarse a sí mismo' });
+
+      const ins = await DB.consulta(
+        'SELECT usuario FROM inscripciones WHERE evento_id = $1 AND usuario IN ($2, $3)',
+        [eventoId, j1, j2 || j1]
+      );
+      const inscriptos = new Set(ins.rows.map(f => f.usuario));
+      if (!inscriptos.has(j1) || (j2 && !inscriptos.has(j2))) {
+        return json(res, 400, { error: 'Ambos jugadores deben estar inscriptos al evento' });
+      }
+
+      const ya = await DB.consulta(
+        'SELECT jugador1, jugador2 FROM emparejamientos WHERE evento_id = $1 AND ronda = $2',
+        [eventoId, ronda]
+      );
+      const usados = new Set();
+      ya.rows.forEach(f => { usados.add(f.jugador1); if (f.jugador2) usados.add(f.jugador2); });
+      if (usados.has(j1) || (j2 && usados.has(j2))) {
+        return json(res, 409, { error: 'Uno de los jugadores ya tiene rival en esta ronda' });
+      }
+
+      const info = await DB.consulta(
+        'INSERT INTO emparejamientos (evento_id, ronda, jugador1, jugador2, ganador, created_at) VALUES ($1,$2,$3,$4,NULL,$5) RETURNING *',
+        [eventoId, ronda, j1, j2 || null, new Date().toISOString()]
+      );
+      return json(res, 201, leerEmparejamiento(info.rows[0]));
+    }
+
+    // PATCH: marcar/limpiar ganador (solo staff)
+    if (req.method === 'PATCH' && mid) {
+      const staff = await exigirStaff(req, res);
+      if (!staff) return;
+      const num = Number(mid);
+      const emp = await DB.consulta('SELECT * FROM emparejamientos WHERE id = $1 AND evento_id = $2', [num, eventoId]);
+      const fila = emp.rows[0];
+      if (!fila) return json(res, 404, { error: 'Cruce no encontrado' });
+      const cuerpo = await leerCuerpo(req);
+      let ganador = null;
+      if (cuerpo.ganador !== undefined && cuerpo.ganador !== null && cuerpo.ganador !== '') {
+        ganador = String(cuerpo.ganador);
+        if (ganador !== fila.jugador1 && ganador !== (fila.jugador2 || '')) {
+          return json(res, 400, { error: 'El ganador debe ser uno de los dos jugadores' });
+        }
+      }
+      await DB.consulta('UPDATE emparejamientos SET ganador = $1 WHERE id = $2', [ganador, fila.id]);
+      const nuevo = await DB.consulta('SELECT * FROM emparejamientos WHERE id = $1', [fila.id]);
+      return json(res, 200, leerEmparejamiento(nuevo.rows[0]));
+    }
+
+    // DELETE: eliminar cruce (solo staff)
+    if (req.method === 'DELETE' && mid) {
+      const staff = await exigirStaff(req, res);
+      if (!staff) return;
+      const info = await DB.consulta(
+        'DELETE FROM emparejamientos WHERE id = $1 AND evento_id = $2',
+        [Number(mid), eventoId]
+      );
+      return json(res, 200, { eliminado: info.rowCount > 0 });
     }
 
     return json(res, 405, { error: 'Método no permitido' });

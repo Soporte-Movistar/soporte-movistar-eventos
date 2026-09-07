@@ -161,6 +161,12 @@ Para que los **eventos**, las **inscripciones** y la **galería de fotos** se si
 | `GET` | `/api/eventos-staff` | Lista los eventos centralizados. |
 | `POST` | `/api/eventos-staff` | Crea un evento (solo staff, header `X-Usuario`). |
 | `DELETE` | `/api/eventos-staff/:id` | Elimina un evento y sus inscripciones/fotos (solo staff). |
+| `GET` | `/api/eventos/:id/inscripciones` | Lista inscripciones y participantes de un evento. |
+| `GET` | `/api/eventos/:id/emparejamientos` | Lista las llaves/cruces de un torneo o PvP. |
+| `POST` | `/api/eventos/:id/emparejamientos` | Crea un cruce manual `{ronda, jugador1, jugador2}` (solo staff). |
+| `POST` | `/api/eventos/:id/emparejamientos/sortear` | Sorteo aleatorio de los sin rival en una ronda (solo staff). |
+| `PATCH` | `/api/eventos/:id/emparejamientos/:m` | Marca/quita el ganador de un cruce (solo staff). |
+| `DELETE` | `/api/eventos/:id/emparejamientos/:m` | Elimina un cruce (solo staff). |
 | `GET` | `/api/eventos/:id/inscripciones` | Lista inscripciones + participantes de un evento. |
 | `POST` | `/api/eventos/:id/inscripciones` | Inscribe a un usuario (respeta la ventana temporal). |
 | `DELETE` | `/api/eventos/:id/inscripciones/:usuario` | Cancela una inscripción. |
@@ -247,6 +253,7 @@ Todos los datos del sitio están en la carpeta `data/`. Solo tienes que editar e
   "estado": "proximo",
   "descripcion": "Una descripción corta del evento.",
   "ubicacion": "Ciudad Férrica",
+  "region": "Hoenn",
   "organizador": "Soporte Movistar",
   "premio": "El premio del evento",
   "imagen": "assets/eventos/mi-evento.jpg",

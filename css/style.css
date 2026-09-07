@@ -2004,3 +2004,102 @@ width: 40px;
     transform: translateX(-50%) translateY(20px);
   }
 }
+
+/* ============================================================
+   LLAVES / RONDAS DE TORNEOS
+   ============================================================ */
+.llaves-pista {
+  font-size: 0.82rem;
+  color: var(--texto-suave);
+}
+
+.llaves-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.llaves-sort,
+.llaves-admin-crear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.llaves-sort select,
+.llaves-admin-crear select {
+  flex: 1 1 140px;
+}
+
+.llaves-ronda {
+  margin-bottom: 1rem;
+}
+
+.llaves-ronda-titulo {
+  font-weight: 700;
+  color: var(--amarillo);
+  margin-bottom: 0.45rem;
+}
+
+.llaves-cruces {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.llaves-cruce {
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-s);
+  padding: 0.55rem 0.7rem;
+  background: var(--fondo-tarjeta);
+}
+
+.llaves-jugadores {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.llaves-nombre {
+  font-weight: 600;
+}
+
+.llaves-vs {
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.llaves-pase {
+  font-size: 0.75rem;
+  color: var(--amarillo);
+  background: var(--naranja-fondo);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+.llaves-cruz-ganador {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--amarillo);
+}
+
+.llaves-admin {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.llaves-admin select {
+  max-width: 180px;
+}
+
+.btn-mini {
+  padding: 0.28rem 0.6rem;
+  font-size: 0.78rem;
+}
