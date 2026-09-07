@@ -69,6 +69,9 @@
     async crearEvento(evento) {
       return pedir('/api/eventos-staff', { method: 'POST', body: evento });
     },
+    async actualizarEvento(eventoId, evento) {
+      return pedir('/api/eventos-staff/' + eventoId, { method: 'PATCH', body: evento });
+    },
     async eliminarEvento(eventoId) {
       return pedir('/api/eventos-staff/' + eventoId, { method: 'DELETE' });
     },

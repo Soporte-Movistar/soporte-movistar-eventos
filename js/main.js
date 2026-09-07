@@ -915,6 +915,7 @@ function construirModalDetalle(evento) {
       <div class="modal-seccion staff-herramientas">
         <h4>🧰 Herramientas de staff</h4>
         <div class="staff-botones">
+          <button class="btn btn-borde" id="btn-editar-evento">✏️ Editar evento</button>
           <button class="btn btn-borde" id="btn-copiar-participantes">📋 Copiar lista de participantes</button>
           ${botonFotos}
           <button class="btn btn-borde btn-peligro" id="btn-eliminar-evento">🗑 Eliminar evento</button>
@@ -999,6 +1000,11 @@ function construirModalDetalle(evento) {
   const botonRivales = cuerpo.querySelector('#btn-modal-rivales');
   if (botonRivales) {
     botonRivales.addEventListener('click', () => abrirModalRivales(evento));
+  }
+
+  const botonEditar = cuerpo.querySelector('#btn-editar-evento');
+  if (botonEditar) {
+    botonEditar.addEventListener('click', () => abrirModalEditarEvento(evento));
   }
 
   const copiarParticipantes = cuerpo.querySelector('#btn-copiar-participantes');
@@ -1193,6 +1199,7 @@ function construirLlaves(opciones) {
           <option value="${utRonda + 1}">Ronda ${utRonda + 1} (o nueva)</option>`;
       toolbar = `
         <div class="llaves-toolbar">
+          <div class="llaves-toolbar-titulo">Organizar rivales</div>
           <div class="llaves-sort">
             <select id="llaves-sortear-ronda">${opcionesRonda}</select>
             <button class="btn btn-amarillo btn-mini" id="llaves-sortear">🎲 Sortear sin rival</button>
@@ -1232,7 +1239,8 @@ function construirLlaves(opciones) {
         }
         let adminHtml = '';
         if (esStaff) {
-          const opts = leads.map(n =>
+          const rivales = [e.jugador1, e.jugador2].filter(Boolean);
+          const opts = rivales.map(n =>
             `<option value="${n}" ${e.ganador === n ? 'selected' : ''}>${n}</option>`
           ).join('');
           adminHtml = `
@@ -1245,7 +1253,7 @@ function construirLlaves(opciones) {
             </div>`;
         }
         return `
-          <div class="llaves-cruce" data-llave-id="${e.id}">
+          <div class="llaves-cruce${e.ganador ? ' llaves-cruce-definido' : ''}" data-llave-id="${e.id}">
             <div class="llaves-jugadores">
               <span class="llaves-nombre">${escaparHTML(e.jugador1)}</span>
               <span class="llaves-vs">vs</span>
@@ -1342,67 +1350,58 @@ function recargarModal(evento) {
   construirModalDetalle(evento);
 }
 
-/* ---------- Modal de creación de evento (staff) ---------- */
+/* ---------- Modal de creación / edición de evento (staff) ---------- */
 
-function abrirModalCrearEvento() {
-  const sesion = obtenerSesion();
-  if (!sesion || !sesion.esStaff) return;
-
-  const modal = document.createElement('div');
-  modal.className = 'modal abierto';
-  modal.id = 'modal-crear-evento';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Crear nuevo evento');
-
+/** Construye el formulario de evento, compartido entre crear y editar. */
+function armarFormEvento(cuerpo, iniciales, alGuardar) {
   const tipos = Object.keys(TIPO_EMOJIS);
-
   const regiones = window.LUGARES_REGIONES || {};
   const hayLugares = Object.keys(regiones).length > 0;
-  const regionInicial = Object.keys(regiones)[0] || '';
+  const regionActual = (regiones[iniciales.region] && iniciales.region) || Object.keys(regiones)[0] || '';
 
   const htmlLugarOpciones = (region) => {
     const d = regiones[region];
     if (!d) return '';
     const opciones = ['Por definir'].concat(d.ciudades, d.islas || [], d.rutas, d.destacados);
-    return opciones.map(v => `<option value="${v}">${v}</option>`).join('');
+    if (iniciales.ubicacion && !opciones.includes(iniciales.ubicacion)) opciones.unshift(iniciales.ubicacion);
+    return opciones.map(v => `<option value="${escaparHTML(v)}"${v === iniciales.ubicacion ? ' selected' : ''}>${escaparHTML(v)}</option>`).join('');
   };
 
-  abrirModalCabecera(modal, 'Crear nuevo evento', '➕', '');
-
-  const cuerpo = modal.querySelector('#modal-cuerpo');
+  const txt = (v) => escaparHTML(String(v === null || v === undefined ? '' : v));
+  const optSel = (opt, actual) => (String(opt) === String(actual) ? ' selected' : '');
+  const reglasTexto = (Array.isArray(iniciales.reglas) ? iniciales.reglas : []).join('\n');
 
   cuerpo.innerHTML = `
     <form id="form-nuevo-evento" class="form-evento">
       <label class="campo">
         <span class="campo-label">Nombre del evento *</span>
-        <input type="text" id="ev-nombre" required maxlength="60" placeholder="Torneo PvP Fin de Semana">
+        <input type="text" id="ev-nombre" required maxlength="60" value="${txt(iniciales.nombre)}" placeholder="Torneo PvP Fin de Semana">
       </label>
       <div class="campos-dos">
         <label class="campo">
           <span class="campo-label">Fecha de inicio *</span>
-          <input type="date" id="ev-fecha" required>
+          <input type="date" id="ev-fecha" required value="${txt(iniciales.fecha)}">
         </label>
         <label class="campo">
           <span class="campo-label">Hora de inicio</span>
-          <input type="time" id="ev-hora" value="20:00">
+          <input type="time" id="ev-hora" value="${txt(iniciales.hora || '20:00')}">
         </label>
       </div>
       <div class="campos-dos">
         <label class="campo">
           <span class="campo-label">Fecha de finalización *</span>
-          <input type="date" id="ev-fecha-fin" required>
+          <input type="date" id="ev-fecha-fin" required value="${txt(iniciales.fechaFin)}">
         </label>
         <label class="campo">
           <span class="campo-label">Hora de finalización</span>
-          <input type="time" id="ev-hora-fin" value="20:00">
+          <input type="time" id="ev-hora-fin" value="${txt(iniciales.horaFin || '20:00')}">
         </label>
       </div>
       <label class="campo">
         <span class="campo-label">Inscripciones</span>
         <select id="ev-inscripcion">
-          <option value="cerrada">Cerradas (terminan al empezar el evento)</option>
-          <option value="abierta">Abiertas (se puede seguir inscribiendo mientras dure)</option>
+          <option value="cerrada"${optSel('cerrada', iniciales.inscripcion)}>Cerradas (terminan al empezar el evento)</option>
+          <option value="abierta"${optSel('abierta', iniciales.inscripcion)}>Abiertas (se puede seguir inscribiendo mientras dure)</option>
         </select>
         <span class="form-aviso" style="margin-top:.5rem">📅 El evento se publica con antelación (días antes) para que todos tengan plazo de anotarse. Con inscripciones cerradas, la inscripción termina cuando empieza el evento.</span>
       </label>
@@ -1410,14 +1409,16 @@ function abrirModalCrearEvento() {
         <label class="campo">
           <span class="campo-label">Tipo</span>
           <select id="ev-tipo">
-            ${tipos.map(t => `<option value="${t}">${TIPO_EMOJIS[t]} ${t}</option>`).join('')}
+            ${tipos.map(t => `<option value="${t}"${optSel(t, iniciales.tipo)}>${TIPO_EMOJIS[t]} ${t}</option>`).join('')}
           </select>
         </label>
         <label class="campo">
           <span class="campo-label">Estado</span>
           <select id="ev-estado">
-            <option value="proximo">Próximo</option>
-            <option value="en_curso">En curso</option>
+            <option value="proximo"${optSel('proximo', iniciales.estado)}>Próximo</option>
+            <option value="en_curso"${optSel('en_curso', iniciales.estado)}>En curso</option>
+            <option value="finalizado"${optSel('finalizado', iniciales.estado)}>Finalizado</option>
+            <option value="cancelado"${optSel('cancelado', iniciales.estado)}>Cancelado</option>
           </select>
         </label>
       </div>
@@ -1426,44 +1427,51 @@ function abrirModalCrearEvento() {
         <label class="campo">
           <span class="campo-label">Región</span>
           <select id="ev-region">
-            ${Object.keys(regiones).map(r => `<option value="${r}">${regiones[r].etiqueta}</option>`).join('')}
+            ${Object.keys(regiones).map(r => `<option value="${r}"${optSel(r, regionActual)}>${regiones[r].etiqueta}</option>`).join('')}
           </select>
         </label>
         <label class="campo">
           <span class="campo-label">Lugar</span>
-          <select id="ev-ubicacion">${htmlLugarOpciones(regionInicial)}</select>
+          <select id="ev-ubicacion">${htmlLugarOpciones(regionActual)}</select>
         </label>
       </div>`
       : `
       <label class="campo">
         <span class="campo-label">Ubicación / zona</span>
-        <input type="text" id="ev-ubicacion" maxlength="60" placeholder="Ej: Ciudad Férrica">
+        <input type="text" id="ev-ubicacion" maxlength="60" value="${txt(iniciales.ubicacion)}" placeholder="Ej: Ciudad Férrica">
       </label>`}
       <label class="campo">
         <span class="campo-label">Premio</span>
-        <input type="text" id="ev-premio" maxlength="80" placeholder="Ej: 1x Shiny + 5.000.000 pokédolares">
+        <input type="text" id="ev-premio" maxlength="80" value="${txt(iniciales.premio)}" placeholder="Ej: 1x Shiny + 5.000.000 pokédolares">
       </label>
       <label class="campo">
         <span class="campo-label">Descripción</span>
-        <textarea id="ev-descripcion" rows="3" maxlength="300" placeholder="Descripción corta del evento..."></textarea>
+        <textarea id="ev-descripcion" rows="3" maxlength="300" placeholder="Descripción corta del evento...">${txt(iniciales.descripcion)}</textarea>
       </label>
       <label class="campo">
         <span class="campo-label">Reglas (una por línea)</span>
-        <textarea id="ev-reglas" rows="3" placeholder="Respetar a todos los participantes&#10;Cumplir las reglas del evento"></textarea>
+        <textarea id="ev-reglas" rows="3" placeholder="Respetar a todos los participantes&#10;Cumplir las reglas del evento">${txt(reglasTexto)}</textarea>
       </label>
       <label class="campo">
         <span class="campo-label">Observaciones</span>
-        <input type="text" id="ev-observaciones" maxlength="120" placeholder="Opcional">
+        <input type="text" id="ev-observaciones" maxlength="120" value="${txt(iniciales.observaciones)}" placeholder="Opcional">
       </label>
-      <p class="form-aviso">${apiActiva() ? '⚙️ Con la API conectada, este evento se guardará de forma <strong>centralizada</strong> y lo verá todo el clan de inmediato.' : '⚠️ Guardas el evento en <strong>este navegador</strong>. Para publicarlo para todo el clan, después copias su JSON y lo pegas en <code>data/eventos.json</code>.'}</p>
       <div class="form-acciones">
-        <button type="button" class="btn btn-borde" data-cerrar>Cancelar</button>
-        <button type="submit" class="btn btn-amarillo">Guardar evento</button>
+        <button type="button" class="btn btn-borde" id="btn-form-cancelar">Cancelar</button>
+        <button type="submit" class="btn btn-amarillo">Guardar</button>
       </div>
     </form>
   `;
 
   const form = cuerpo.querySelector('#form-nuevo-evento');
+
+  const btnCancelar = cuerpo.querySelector('#btn-form-cancelar');
+  if (btnCancelar) {
+    btnCancelar.addEventListener('click', () => {
+      const modal = form.closest('.modal');
+      if (modal) cerrarModal(modal);
+    });
+  }
 
   const selRegion = cuerpo.querySelector('#ev-region');
   if (selRegion) {
@@ -1501,8 +1509,7 @@ function abrirModalCrearEvento() {
       .map(l => l.trim())
       .filter(l => l.length > 0);
 
-    const nuevoEvento = {
-      id: -(Date.now()),
+    alGuardar({
       nombre,
       tipo,
       tipoIcono: TIPO_EMOJIS[tipo],
@@ -1515,16 +1522,38 @@ function abrirModalCrearEvento() {
       descripcion: document.getElementById('ev-descripcion').value.trim() || 'Evento organizado por el clan Soporte Movistar.',
       ubicacion: document.getElementById('ev-ubicacion').value.trim() || 'Por definir',
       region: selRegion ? selRegion.value : '',
-      organizador: sesion.nombre,
       premio: document.getElementById('ev-premio').value.trim() || 'Por confirmar',
-      imagen: '',
       reglas,
-      participantes: [],
-      ganador: null,
-      resultados: [],
-      observaciones: document.getElementById('ev-observaciones').value.trim() || '',
-      _local: true
-    };
+      observaciones: document.getElementById('ev-observaciones').value.trim() || ''
+    });
+  });
+}
+
+function abrirModalCrearEvento() {
+  const sesion = obtenerSesion();
+  if (!sesion || !sesion.esStaff) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal abierto';
+  modal.id = 'modal-crear-evento';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Crear nuevo evento');
+
+  abrirModalCabecera(modal, 'Crear nuevo evento', '➕', '');
+
+  const cuerpo = modal.querySelector('#modal-cuerpo');
+
+  armarFormEvento(cuerpo, {
+    nombre: '', fecha: '', hora: '20:00', fechaFin: '', horaFin: '20:00',
+    inscripcion: 'cerrada', tipo: '', estado: 'proximo', region: '', ubicacion: '',
+    premio: '', descripcion: '', reglas: [], observaciones: ''
+  }, (datos) => {
+    const nuevoEvento = Object.assign(
+      { id: -(Date.now()), imagen: '', participantes: [], ganador: null, resultados: [], _local: true },
+      datos,
+      { organizador: sesion.nombre }
+    );
 
     // Pantalla de éxito con el estado de publicación
     cuerpo.innerHTML = `
@@ -1533,7 +1562,7 @@ function abrirModalCrearEvento() {
         <h3>Evento guardado</h3>
         <p id="publicacion-estado">⏳ Publicando el evento…</p>
         <div class="staff-botones">
-          <button type="button" class="btn btn-borde" id="btn-creacion-list" data-cerrar>Listo</button>
+          <button type="button" class="btn btn-borde" id="btn-creacion-list">Listo</button>
         </div>
       </div>`;
 
@@ -1552,6 +1581,66 @@ function abrirModalCrearEvento() {
     document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
 
     cuerpo.querySelector('#btn-creacion-list').addEventListener('click', () => cerrarModal(modal));
+  });
+}
+
+function abrirModalEditarEvento(evento) {
+  const sesion = obtenerSesion();
+  if (!sesion || !sesion.esStaff) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal abierto';
+  modal.id = 'modal-editar-evento';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Editar evento');
+
+  abrirModalCabecera(modal, 'Editar evento', '✏️', '');
+
+  const cuerpo = modal.querySelector('#modal-cuerpo');
+
+  armarFormEvento(cuerpo, {
+    nombre: evento.nombre || '',
+    fecha: evento.fecha || '',
+    hora: evento.hora || '20:00',
+    fechaFin: evento.fechaFin || '',
+    horaFin: evento.horaFin || '20:00',
+    inscripcion: evento.inscripcion || 'cerrada',
+    tipo: evento.tipo || '',
+    estado: evento.estado || 'proximo',
+    region: evento.region || '',
+    ubicacion: evento.ubicacion || '',
+    premio: evento.premio || '',
+    descripcion: evento.descripcion || '',
+    reglas: evento.reglas || [],
+    observaciones: evento.observaciones || ''
+  }, async (datos) => {
+    const actualizado = Object.assign({}, evento, datos, {
+      participantes: Array.isArray(evento.participantes) ? evento.participantes : []
+    });
+
+    const idApi = idApiDeEvento(evento);
+    try {
+      if (idApi && apiActiva()) {
+        await window.SM_API.actualizarEvento(idApi, actualizado);
+        actualizado.id = idApi;
+        actualizado._api = true;
+        actualizado._local = false;
+      } else {
+        guardarEventosStaff(obtenerEventosStaff().map(e => e.id === evento.id ? Object.assign({}, e, datos) : e));
+      }
+      // Si había copia local guardada del evento centralizado, alinearla
+      const lista = obtenerEventosStaff();
+      if (idApi && lista.some(e => e.id === evento.id)) {
+        guardarEventosStaff(lista.map(e => e.id === evento.id ? actualizado : e));
+      }
+      mostrarToast('✅ Evento actualizado.');
+      document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
+      cerrarModal(modal);
+      recargarModal(actualizado);
+    } catch (err) {
+      mostrarToast(`⚠️ No se pudo actualizar: ${(err && err.message) || 'error'}`);
+    }
   });
 }
 

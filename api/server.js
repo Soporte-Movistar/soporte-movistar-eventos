@@ -204,9 +204,33 @@ async function manejar(req, res) {
     return json(res, 201, leerEvento(nuevo.rows[0]));
   }
 
+  // Rutas que operan sobre un evento por id (actualizar / eliminar).
+  const mEventoDel = ruta.match(/^\/api\/eventos-staff\/(\d+)$/);
+
+  // Actualizar un evento publicado (solo staff).
+  if (mEventoDel && mEventoDel[1] && req.method === 'PATCH') {
+    const staff = await exigirStaff(req, res);
+    if (!staff) return;
+    const cuerpo = await leerCuerpo(req);
+    const ev = crearEventoDesdeCuerpo(cuerpo, staff);
+    if (!ev.nombre) return json(res, 400, { error: 'El nombre es obligatorio' });
+    const update = await DB.consulta(`
+      UPDATE eventos SET nombre=$1, tipo=$2, tipoIcono=$3, fecha=$4, hora=$5, fechaFin=$6, horaFin=$7,
+        inscripcion=$8, estado=$9, descripcion=$10, ubicacion=$11, region=$12, organizador=$13, premio=$14,
+        reglas=$15, participantes=$16, ganador=$17, resultados=$18, observaciones=$19
+      WHERE id=$20 RETURNING id
+    `, [
+      ev.nombre, ev.tipo, ev.tipoIcono, ev.fecha, ev.hora, ev.fechaFin, ev.horaFin, ev.inscripcion,
+      ev.estado, ev.descripcion, ev.ubicacion, ev.region, ev.organizador, ev.premio, ev.reglas,
+      ev.participantes, ev.ganador, ev.resultados, ev.observaciones, Number(mEventoDel[1])
+    ]);
+    if (!update.rows.length) return json(res, 404, { error: 'Evento no encontrado' });
+    const filas = await DB.consulta('SELECT * FROM eventos WHERE id = $1', [Number(mEventoDel[1])]);
+    return json(res, 200, leerEvento(filas.rows[0]));
+  }
+
   // Eliminar un evento publicado (solo staff). Borra en cascada sus
   // inscripciones y fotos (claves foráneas con ON DELETE CASCADE).
-  const mEventoDel = ruta.match(/^\/api\/eventos-staff\/(\d+)$/);
   if (mEventoDel && req.method === 'DELETE') {
     const staff = await exigirStaff(req, res);
     if (!staff) return;
