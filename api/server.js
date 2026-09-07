@@ -245,29 +245,11 @@ async function manejar(req, res) {
       const ev = await DB.consulta('SELECT * FROM eventos WHERE id = $1', [eventoId]);
       const evObj = leerEvento(ev.rows[0]);
 
-      // Reutilizar la misma lógica del frontend para saber si aún se puede,
-      // interpretando los horarios del evento como hora de Argentina (UTC-3)
-      // y NO como UTC, que es donde corre el servidor (Render).
-      const ahora = Date.now();
-      const TZ_AR_MS = -3 * 60 * 60 * 1000;
-      const instante = (fecha, hora = '00:00') => {
-        if (!fecha) return null;
-        const [a, m, d] = String(fecha).split('-').map(Number);
-        const [hh, mm] = String(hora).split(':').map(Number);
-        const utcMs = Date.UTC(a, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
-        return utcMs - TZ_AR_MS;
-      };
+      // La ventana horaria la decide el navegador de cada usuario (hora local
+      // del evento), como hizo el sitio siempre. El servidor solo bloquea
+      // eventos estructuralmente cerrados, evitando depender de su zona horaria.
       let abiertas = true;
       if (evObj.estado === 'finalizado' || evObj.estado === 'cancelado') abiertas = false;
-      if (abiertas) {
-        if (evObj.inscripcion === 'cerrada') {
-          const inicio = instante(evObj.fecha, evObj.hora);
-          if (inicio !== null && ahora > inicio) abiertas = false;
-        } else {
-          const fin = instante(evObj.fechaFin, evObj.horaFin) || instante(evObj.fecha, evObj.hora);
-          if (fin !== null && ahora > fin) abiertas = false;
-        }
-      }
       if (!abiertas) return json(res, 400, { error: 'Inscripciones cerradas' });
 
       const cuerpo = await leerCuerpo(req);
