@@ -591,7 +591,15 @@ function inscribirse(eventoId, evento) {
   const idApi = idApiDeEvento(evento);
   if (idApi) {
     window.SM_API.inscribirse(idApi, { usuario: sesion.nombre, fecha: new Date().toISOString() })
-      .catch(err => console.warn('API: no se pudo inscribir remotamente:', err.message));
+      .then(() => document.dispatchEvent(new CustomEvent('sm:inscripcionSincronizada')))
+      .catch(err => {
+        console.warn('API: no se pudo inscribir remotamente:', err.message);
+        // La API es la verdad para eventos remotos: quitar el alta local fantasma
+        guardarInscripciones(
+          obtenerInscripciones().filter(i => !(i.eventoId === eventoId && i.usuario === sesion.nombre))
+        );
+        mostrarToast('⚠️ ' + (err.message || 'No se pudo inscribir.'));
+      });
   }
 
   return true;
@@ -607,7 +615,10 @@ function cancelarInscripcion(eventoId, evento) {
   const idApi = idApiDeEvento(evento);
   if (idApi) {
     window.SM_API.cancelarInscripcion(idApi, sesion.nombre)
-      .catch(err => console.warn('API: no se pudo cancelar inscripción remotamente:', err.message));
+      .catch(err => {
+        console.warn('API: no se pudo cancelar inscripción remotamente:', err.message);
+        mostrarToast('⚠️ ' + (err.message || 'No se pudo cancelar en la web.'));
+      });
   }
 
   return true;
@@ -1058,15 +1069,20 @@ function construirModalDetalle(evento) {
             .filter(i => i.eventoId === evento.id)
             .map(i => i.usuario);
           const todos = [...new Set([...remotos, ...local])];
-          const listaEl = cuerpo.querySelector('.modal-seccion:nth-of-type(4) ol, .modal-seccion > ol');
           const tituloParticipantes = [...cuerpo.querySelectorAll('h4')].find(h => h.textContent.startsWith('Participantes'));
           if (tituloParticipantes) {
             tituloParticipantes.textContent = `Participantes (${todos.length})`;
-            const ol = tituloParticipantes.parentElement.querySelector('ol');
-            if (ol) {
-              ol.innerHTML = todos.length
-                ? todos.map(p => `<li>${escaparHTML(p)}</li>`).join('')
-                : '<li>Sin participantes todavía.</li>';
+            const seccion = tituloParticipantes.parentElement;
+            const pSin = seccion.querySelector('p');
+            let ol = seccion.querySelector('ol');
+            if (todos.length) {
+              if (pSin) pSin.remove();
+              if (!ol) { ol = document.createElement('ol'); seccion.appendChild(ol); }
+              ol.innerHTML = todos.map(p => `<li>${escaparHTML(p)}</li>`).join('');
+            } else if (!ol && !pSin) {
+              const p = document.createElement('p');
+              p.textContent = 'Sin participantes todavía. ¡Inscribite!';
+              seccion.appendChild(p);
             }
           }
           if (contenedorLlaves) {

@@ -245,13 +245,17 @@ async function manejar(req, res) {
       const ev = await DB.consulta('SELECT * FROM eventos WHERE id = $1', [eventoId]);
       const evObj = leerEvento(ev.rows[0]);
 
-      // Reutilizar la misma lógica del frontend para saber si aún se puede
+      // Reutilizar la misma lógica del frontend para saber si aún se puede,
+      // interpretando los horarios del evento como hora de Argentina (UTC-3)
+      // y NO como UTC, que es donde corre el servidor (Render).
       const ahora = Date.now();
-      const instante = (fecha, hora) => {
+      const TZ_AR_MS = -3 * 60 * 60 * 1000;
+      const instante = (fecha, hora = '00:00') => {
         if (!fecha) return null;
-        const f = new Date(fecha.replace(/-/g, '/'));
-        if (hora) { const [hh, mm] = hora.split(':'); f.setHours(Number(hh) || 0, Number(mm) || 0, 0, 0); }
-        return f.getTime();
+        const [a, m, d] = String(fecha).split('-').map(Number);
+        const [hh, mm] = String(hora).split(':').map(Number);
+        const utcMs = Date.UTC(a, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+        return utcMs - TZ_AR_MS;
       };
       let abiertas = true;
       if (evObj.estado === 'finalizado' || evObj.estado === 'cancelado') abiertas = false;
