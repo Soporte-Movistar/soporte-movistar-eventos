@@ -16,13 +16,22 @@
 
   const RANGOS_STAFF = ['staff', 'jefazo'];
 
+  // La sesión se guarda en localStorage con clave 'sm-usuario' (ver main.js).
+  function usuarioSesion() {
+    try {
+      return JSON.parse(window.localStorage.getItem('sm-usuario')) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function pedir(ruta, opciones) {
     const opt = opciones || {};
     const encabezados = Object.assign(
       { 'Content-Type': 'application/json' },
       opt.headers || {}
     );
-    const usuario = window.SM && window.SM.getUsuario ? window.SM.getUsuario() : null;
+    const usuario = usuarioSesion();
     if (usuario && usuario.nombre) {
       encabezados['X-Usuario'] = usuario.nombre;
     }
