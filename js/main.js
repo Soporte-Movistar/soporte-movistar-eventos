@@ -828,6 +828,13 @@ function cerrarModal(modal) {
   if (handlerCierreEsc) document.removeEventListener('keydown', handlerCierreEsc);
   handlerCierreEsc = null;
   if (modal) modal.remove();
+
+  // Si quedó otro modal abierto (p.ej. Rivales sobre Detalle), restaurar bloqueo
+  const restante = document.querySelector('.modal.abierto');
+  if (restante) {
+    document.body.classList.add('modal-abierto');
+    registrarCierreEsc(restante);
+  }
 }
 
 /* ---------- Modal de detalle de evento ---------- */
@@ -942,6 +949,7 @@ function construirModalDetalle(evento) {
     ${esLlaves ? `
     <div class="modal-seccion">
       <h4>⚔️ Llaves / Rondas</h4>
+      <button type="button" class="btn btn-amarillo btn-mini" id="btn-modal-rivales">🆚 Rivales</button>
       <div id="llaves-evento"><p>Cargando llaves...</p></div>
     </div>` : ''}
     <div class="modal-seccion">
@@ -986,6 +994,11 @@ function construirModalDetalle(evento) {
       mostrarToast('❌ Inscripción cancelada.');
       recargarModal(evento);
     });
+  }
+
+  const botonRivales = cuerpo.querySelector('#btn-modal-rivales');
+  if (botonRivales) {
+    botonRivales.addEventListener('click', () => abrirModalRivales(evento));
   }
 
   const copiarParticipantes = cuerpo.querySelector('#btn-copiar-participantes');
@@ -1092,6 +1105,43 @@ function construirModalDetalle(evento) {
         .catch(() => {});
     });
   }
+}
+
+/**
+ * Abre un panel dedicado para organizar los enfrentamientos de un torneo/PvP
+ * (sorteo al azar o armar cruces manualmente). Solo edita el staff; los
+ * jugadores ven el panel en modo lectura.
+ */
+function abrirModalRivales(evento) {
+  if (!esEventoDeLlaves(evento)) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal abierto';
+  modal.id = 'modal-rivales';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', `Rivales · ${evento.nombre}`);
+
+  const tipoIcono = evento.tipoIcono || TIPO_EMOJIS[evento.tipo] || '🆚';
+  const estadoHTML = `<span class="estado estado-${escaparHTML(evento.estado)}">${etiquetaEstado(evento.estado)}</span>`;
+  const modalFinal = abrirModalCabecera(modal, `Rivales · ${evento.nombre}`, tipoIcono, estadoHTML);
+  const cuerpo = modalFinal.querySelector('#modal-cuerpo');
+
+  cuerpo.innerHTML = `
+    <p class="modal-sub">
+      ${formatearFechaLarga(evento.fecha)}${evento.hora ? ` · ${escaparHTML(evento.hora)}` : ''}
+      · ${escaparHTML(evento.ubicacion || 'Por definir')}
+    </p>
+    <div id="rivales-contenido"><p>Cargando llaves...</p></div>
+  `;
+
+  construirLlaves({
+    contenedor: modalFinal.querySelector('#rivales-contenido'),
+    idApi: idApiDeEvento(evento),
+    participantes: participantesDelEvento(evento),
+    sesion: obtenerSesion(),
+    evento
+  });
 }
 
 /* ---------- Llaves / rondas de torneos ---------- */
