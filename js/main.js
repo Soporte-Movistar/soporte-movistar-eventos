@@ -688,33 +688,40 @@ function guardarEventosStaff(lista) {
   localStorage.setItem(LS_EVENTOS_STAFF, JSON.stringify(lista));
 }
 
-function guardarEventoStaff(evento) {
+async function guardarEventoStaff(evento) {
   const lista = obtenerEventosStaff();
   lista.push(evento);
   guardarEventosStaff(lista);
   registrarAnuncioDeEvento(evento);
 
   // Subir a la API centralizada (si está disponible y el usuario es staff)
-  apiEstaDisponible().then((disponible) => {
-    if (!disponible) return;
-    const sesion = obtenerSesion();
-    if (!sesion || !sesion.esStaff) return;
-    const limpio = { ...evento };
-    delete limpio._local;
-    delete limpio._api;
-    window.SM_API.crearEvento(limpio)
-      .then((creado) => {
-        if (creado && creado.id) {
-          // Sustituir el evento local por el remoto (con su id real)
-          guardarEventosStaff(obtenerEventosStaff().filter(e => e.id !== evento.id));
-          const remoto = Object.assign({}, limpio, { id: creado.id, _local: false, _api: true });
-          guardarEventosStaff([...obtenerEventosStaff(), remoto]);
-          registrarAnuncioDeEvento(remoto);
-          document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
-        }
-      })
-      .catch(err => console.warn('API: no se pudo crear el evento remotamente:', err.message));
-  });
+  const disponible = await apiEstaDisponible();
+  if (!disponible) {
+    return { centralizado: false, motivo: 'La API no responde (¿sin conexión o arrancando?).' };
+  }
+  const sesion = obtenerSesion();
+  if (!sesion || !sesion.esStaff) {
+    return { centralizado: false, motivo: 'No estás logueado como staff.' };
+  }
+  const limpio = { ...evento };
+  delete limpio._local;
+  delete limpio._api;
+  try {
+    const creado = await window.SM_API.crearEvento(limpio);
+    if (creado && creado.id) {
+      // Sustituir el evento local por el remoto (con su id real)
+      guardarEventosStaff(obtenerEventosStaff().filter(e => e.id !== evento.id));
+      const remoto = Object.assign({}, limpio, { id: creado.id, _local: false, _api: true });
+      guardarEventosStaff([...obtenerEventosStaff(), remoto]);
+      registrarAnuncioDeEvento(remoto);
+      document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
+      return { centralizado: true, id: creado.id };
+    }
+    return { centralizado: false, motivo: 'La API respondió sin id de evento.' };
+  } catch (err) {
+    console.warn('API: no se pudo crear el evento remotamente:', err);
+    return { centralizado: false, motivo: (err && err.message) || 'Error desconocido' };
+  }
 }
 
 function eliminarEventoLocal(id) {
@@ -1453,21 +1460,30 @@ function abrirModalCrearEvento() {
       _local: true
     };
 
-    guardarEventoStaff(nuevoEvento);
-    document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
-
-    // Pantalla de éxito con opción de copiar el JSON
+    // Pantalla de éxito con el estado de publicación
     cuerpo.innerHTML = `
       <div class="creacion-exito">
         <span class="creacion-exito-ico" aria-hidden="true">🎉</span>
         <h3>Evento guardado</h3>
-        ${apiActiva()
-          ? `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya aparece en la lista y se está publicando de forma <strong>centralizada</strong> para todo el clan.</p>`
-          : `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya aparece en la lista (con la etiqueta LOCAL).</p>`}
+        <p id="publicacion-estado">⏳ Publicando el evento…</p>
         <div class="staff-botones">
           <button type="button" class="btn btn-borde" id="btn-creacion-list" data-cerrar>Listo</button>
         </div>
       </div>`;
+
+    guardarEventoStaff(nuevoEvento).then((res) => {
+      document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
+      const estado = cuerpo.querySelector('#publicacion-estado');
+      if (!estado) return;
+      if (res.centralizado) {
+        estado.outerHTML =
+          `<p><strong>${escaparHTML(nuevoEvento.nombre)}</strong> ya está publicado de forma <strong>centralizada</strong>: lo ve todo el clan.</p>`;
+      } else {
+        estado.outerHTML =
+          `<p class="aviso-local">⚠️ El evento quedó <strong>local</strong> (solo este navegador).<br><small>Motivo: ${escaparHTML(res.motivo)}</small></p>`;
+      }
+    });
+    document.dispatchEvent(new CustomEvent('sm:eventosActualizados'));
 
     cuerpo.querySelector('#btn-creacion-list').addEventListener('click', () => cerrarModal(modal));
   });
